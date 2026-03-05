@@ -1,0 +1,117 @@
+services:
+  # ─── Postgres ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inmoflow
+      POSTGRES_PASSWORD: inmoflow
+      POSTGRES_DB: inmoflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inmoflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-inmoflow-redis}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-inmoflow-redis}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── API (NestJS) ─────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://inmoflow:inmoflow@postgres:5432/inmoflow?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-inmoflow-redis}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-in-prod}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      API_PORT: 4000
+      NODE_ENV: ${NODE_ENV:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ─── Worker (BullMQ) ──────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://inmoflow:inmoflow@postgres:5432/inmoflow?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-inmoflow-redis}
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Web (Next.js) ────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:4000
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ─── DB Migrations (run once) ─────────────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    command: >
+      sh -c "cd /app/packages/db && npx prisma migrate deploy && npx tsx src/seed.ts"
+    environment:
+      DATABASE_URL: postgresql://inmoflow:inmoflow@postgres:5432/inmoflow?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    profiles:
+      - migrate
+
+volumes:
+  pgdata:
+  redisdata:

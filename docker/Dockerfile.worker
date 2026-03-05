@@ -1,0 +1,39 @@
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+WORKDIR /app
+
+# ─── Install dependencies ─────────────────────────────
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/worker/package.json ./apps/worker/
+COPY packages/db/package.json ./packages/db/
+COPY packages/shared/package.json ./packages/shared/
+RUN pnpm install --frozen-lockfile
+
+# ─── Build ─────────────────────────────────────────────
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
+COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY . .
+RUN pnpm --filter @inmoflow/db generate
+RUN pnpm --filter @inmoflow/worker build
+
+# ─── Production ────────────────────────────────────────
+FROM base AS runner
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 appgroup \
+ && adduser --system --uid 1001 appuser --ingroup appgroup
+
+COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=builder --chown=appuser:appgroup /app/apps/worker/dist ./apps/worker/dist
+COPY --from=builder --chown=appuser:appgroup /app/apps/worker/node_modules ./apps/worker/node_modules
+COPY --from=builder --chown=appuser:appgroup /app/packages/db ./packages/db
+COPY --from=builder --chown=appuser:appgroup /app/packages/shared ./packages/shared
+COPY --from=builder --chown=appuser:appgroup /app/apps/worker/package.json ./apps/worker/
+
+USER appuser
+WORKDIR /app/apps/worker
+CMD ["node", "dist/main"]
