@@ -18,6 +18,8 @@ COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY . .
 RUN pnpm --filter @inmoflow/db generate
+RUN pnpm --filter @inmoflow/db build
+RUN pnpm --filter @inmoflow/shared build
 RUN pnpm --filter @inmoflow/worker build
 
 # ─── Production ────────────────────────────────────────
