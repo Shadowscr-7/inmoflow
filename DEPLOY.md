@@ -28,27 +28,15 @@ crm.contacthouse.com.uy  →  31.97.93.104  ✅
 
 ---
 
-## Paso 2 — Subir código al servidor
+## Paso 2 — Clonar repositorio desde GitHub
 
-**En tu PC (Windows PowerShell):**
-```powershell
-cd E:\Proyectos\inmoflow
-
-# Crear ZIP para deploy (excluye node_modules, .git, etc.)
-powershell -File scripts/create-deploy-zip.ps1
-
-# Subir al servidor
-scp deploy-inmoflow.zip root@31.97.93.104:/opt/
-```
-
-**En el servidor:**
 ```bash
-cd /opt
-# Instalar unzip si no existe
-apt-get install -y unzip
+# Instalar git si no existe
+apt-get install -y git
 
-# Descomprimir
-unzip -o deploy-inmoflow.zip -d inmoflow
+# Clonar rama prod
+cd /opt
+git clone -b prod https://github.com/Shadowscr-7/inmoflow.git
 cd inmoflow
 ```
 
@@ -176,11 +164,9 @@ iflow up -d --build         # Rebuild + levantar
 # Backup manual de BD
 iflow --profile backup run --rm inmoflow-backup
 
-# Actualizar aplicación (desde tu PC)
-# 1. Generar nuevo ZIP en Windows
-# 2. scp deploy-inmoflow.zip root@31.97.93.104:/opt/
-# 3. En el servidor:
-cd /opt && unzip -o deploy-inmoflow.zip -d inmoflow
+# Actualizar aplicación (pull desde GitHub)
+cd /opt/inmoflow
+git pull origin prod
 iflow up -d --build
 ```
 
