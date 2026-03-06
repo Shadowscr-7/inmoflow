@@ -109,6 +109,7 @@ services:
       - traefik_net
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-root_proxy}"
       # ── HTTPS: /api + /ws → API container (puerto 4000) ────
       - "traefik.http.routers.inmoflow-api.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`))"
       - "traefik.http.routers.inmoflow-api.entrypoints=${TRAEFIK_ENTRYPOINT_HTTPS:-websecure}"
@@ -119,6 +120,8 @@ services:
       - "traefik.http.routers.inmoflow-api-http.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`))"
       - "traefik.http.routers.inmoflow-api-http.entrypoints=${TRAEFIK_ENTRYPOINT_HTTP:-web}"
       - "traefik.http.routers.inmoflow-api-http.middlewares=inmoflow-redirect-https"
+      - "traefik.http.middlewares.inmoflow-redirect-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.inmoflow-redirect-https.redirectscheme.permanent=true"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/health || exit 1"]
       interval: 15s
@@ -188,6 +191,7 @@ services:
       - traefik_net
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-root_proxy}"
       # ── HTTPS: todo lo demás → Web container (puerto 3000) ──
       - "traefik.http.routers.inmoflow-web.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.inmoflow-web.entrypoints=${TRAEFIK_ENTRYPOINT_HTTPS:-websecure}"
