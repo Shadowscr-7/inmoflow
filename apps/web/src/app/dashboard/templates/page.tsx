@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api, Template } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Plus, FileText, Pencil, Trash2, Globe, User } from "lucide-react";
@@ -11,6 +11,19 @@ const CHANNEL_OPTIONS = [
   { value: "WHATSAPP", label: "WhatsApp" },
   { value: "TELEGRAM", label: "Telegram" },
   { value: "WEB", label: "Web" },
+];
+
+/** Available template variables with labels for the UI */
+const TEMPLATE_VARIABLES = [
+  { key: "nombre", label: "Nombre", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 border-blue-200 dark:border-blue-700" },
+  { key: "telefono", label: "Teléfono", color: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300 border-green-200 dark:border-green-700" },
+  { key: "email", label: "Email", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 border-purple-200 dark:border-purple-700" },
+  { key: "fuente", label: "Fuente", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300 border-orange-200 dark:border-orange-700" },
+  { key: "etapa", label: "Etapa", color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700" },
+  { key: "estado", label: "Estado", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700" },
+  { key: "agente", label: "Agente", color: "bg-pink-100 text-pink-700 dark:bg-pink-900/50 dark:text-pink-300 border-pink-200 dark:border-pink-700" },
+  { key: "intencion", label: "Intención", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700" },
+  { key: "notas", label: "Notas", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-600" },
 ];
 
 const EMPTY_FORM = { key: "", name: "", channel: "", content: "", enabled: true, global: false };
@@ -30,8 +43,30 @@ export default function TemplatesPage() {
   const [filterChannel, setFilterChannel] = useState("");
   const [filterEnabled, setFilterEnabled] = useState("");
   const [scope, setScope] = useState<Scope>("all");
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const isAdmin = user?.role === "BUSINESS" || user?.role === "ADMIN";
+
+  /** Insert a {{variable}} at the current cursor position in the content textarea */
+  const insertVariable = (key: string) => {
+    const tag = `{{${key}}}`;
+    const ta = contentRef.current;
+    if (ta) {
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const before = form.content.slice(0, start);
+      const after = form.content.slice(end);
+      const newContent = before + tag + after;
+      setForm({ ...form, content: newContent });
+      // Restore cursor position after the inserted tag
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.selectionStart = ta.selectionEnd = start + tag.length;
+      });
+    } else {
+      setForm({ ...form, content: form.content + tag });
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -265,8 +300,22 @@ export default function TemplatesPage() {
             </div>
             <div>
               <label className="label">Contenido</label>
-              <textarea rows={5} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} placeholder={"Hola {{nombre}}, gracias por tu interés en {{propiedad}}."} className="input font-mono" />
-              <p className="text-xs text-gray-400 mt-1">Usa {"{{campo}}"} para variables: nombre, email, phone, propiedad, etc.</p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400 self-center mr-1">Variables:</span>
+                {TEMPLATE_VARIABLES.map((v) => (
+                  <button
+                    key={v.key}
+                    type="button"
+                    onClick={() => insertVariable(v.key)}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border cursor-pointer hover:opacity-80 transition ${v.color}`}
+                    title={`Insertar {{${v.key}}}`}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              <textarea ref={contentRef} rows={5} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} placeholder={"Hola {{nombre}}, gracias por tu interés."} className="input font-mono" />
+              <p className="text-xs text-gray-400 mt-1">Hacé clic en una variable para insertarla en el contenido</p>
             </div>
             {isAdmin && (
               <div className="flex items-center gap-3 p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">

@@ -255,14 +255,29 @@ export class RuleEngineService {
 
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, tenantId },
+      include: { source: true, stage: true, assignee: true },
     });
     if (!lead) return;
 
-    // Render placeholders
+    // Render placeholders — all available lead variables
     const variables: Record<string, string> = {
+      nombre: lead.name ?? "cliente",
       name: lead.name ?? "cliente",
+      telefono: lead.phone ?? "",
       phone: lead.phone ?? "",
       email: lead.email ?? "",
+      fuente: lead.source?.name ?? "",
+      source: lead.source?.name ?? "",
+      etapa: lead.stage?.name ?? "",
+      stage: lead.stage?.name ?? "",
+      estado: lead.status ?? "",
+      status: lead.status ?? "",
+      agente: lead.assignee?.name ?? "",
+      agent: lead.assignee?.name ?? "",
+      intencion: lead.intent ?? "",
+      intent: lead.intent ?? "",
+      notas: lead.notes ?? "",
+      notes: lead.notes ?? "",
     };
 
     const rendered = template.content.replace(
