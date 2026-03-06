@@ -110,17 +110,14 @@ export class LeadsService {
   async findAll(tenantId: string, filters: LeadFilters, currentUser?: CurrentUserInfo) {
     if (!tenantId) return { data: [], total: 0, limit: filters.limit ?? 25, offset: filters.offset ?? 0 };
 
-    console.log('[LeadsService.findAll] currentUser:', JSON.stringify(currentUser));
-
     const where: Prisma.LeadWhereInput = { tenantId };
 
     if (filters.status) where.status = filters.status;
     if (filters.stageId) where.stageId = filters.stageId;
 
-    // AGENT role: only see their own assigned leads
-    if (currentUser?.role === 'AGENT') {
+    // AGENT / VIEWER role: only see their own assigned leads
+    if (currentUser?.role === 'AGENT' || currentUser?.role === 'VIEWER') {
       where.assigneeId = currentUser.userId;
-      console.log('[LeadsService.findAll] AGENT isolation applied, assigneeId:', currentUser.userId);
     } else if (filters.assigneeId) {
       where.assigneeId = filters.assigneeId;
     }

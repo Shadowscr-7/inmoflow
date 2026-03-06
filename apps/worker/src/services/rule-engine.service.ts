@@ -276,6 +276,7 @@ export class RuleEngineService {
       agent: lead.assignee?.name ?? "",
       intencion: lead.intent ?? "",
       intent: lead.intent ?? "",
+      propiedad: lead.intent ?? "",
       notas: lead.notes ?? "",
       notes: lead.notes ?? "",
     };

@@ -179,13 +179,16 @@ export class InboundWebhookController {
       }
     }
 
+    // Combine intent: explicit intent takes priority, then webhook source field
+    const intent = data.intent || data.source || undefined;
+
     const lead = await this.prisma.lead.create({
       data: {
         tenantId,
         name: data.name || undefined,
         phone: data.phone || undefined,
         email: data.email || undefined,
-        intent: data.intent || undefined,
+        intent: intent || undefined,
         notes: notes || undefined,
         status,
         stageId,
@@ -222,5 +225,6 @@ interface InboundLeadPayload {
   status?: string;
   stageKey?: string;
   agent?: string;
+  source?: string;
   extra?: Record<string, unknown>;
 }
