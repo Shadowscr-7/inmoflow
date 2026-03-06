@@ -3,6 +3,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 type FetchOptions = RequestInit & {
   token?: string;
+  /** Skip the global 401 handler (used for login / refresh endpoints) */
+  skipUnauthorizedHandler?: boolean;
 };
 
 // Global 401 handler — set by AuthProvider
@@ -15,7 +17,7 @@ async function apiFetch<T = unknown>(
   path: string,
   options: FetchOptions = {},
 ): Promise<T> {
-  const { token, headers, ...rest } = options;
+  const { token, headers, skipUnauthorizedHandler, ...rest } = options;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -32,7 +34,7 @@ async function apiFetch<T = unknown>(
     });
 
     if (!res.ok) {
-      if (res.status === 401 && onUnauthorized) {
+      if (res.status === 401 && onUnauthorized && !skipUnauthorizedHandler) {
         onUnauthorized();
       }
       const body = await res.json().catch(() => ({})) as Record<string, string>;
@@ -75,6 +77,7 @@ export function login(email: string, password: string) {
   return apiFetch<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
+    skipUnauthorizedHandler: true,
   });
 }
 
@@ -82,6 +85,7 @@ export function refreshAccessToken(refreshToken: string) {
   return apiFetch<{ access_token: string }>("/auth/refresh", {
     method: "POST",
     body: JSON.stringify({ refresh_token: refreshToken }),
+    skipUnauthorizedHandler: true,
   });
 }
 

@@ -30,7 +30,7 @@ function Particles() {
 }
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, isLoading } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,6 +39,13 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  // If already authenticated, redirect to dashboard
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, isLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
