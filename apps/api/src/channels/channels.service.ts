@@ -14,6 +14,8 @@ export class ChannelsService {
 
   /** All channels for the tenant (admin view) */
   async findAll(tenantId: string) {
+    if (!tenantId) return [];
+
     return this.prisma.channel.findMany({
       where: { tenantId },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },
@@ -23,6 +25,8 @@ export class ChannelsService {
 
   /** Channels owned by a specific user */
   async findByUser(tenantId: string, userId: string) {
+    if (!tenantId) return [];
+
     return this.prisma.channel.findMany({
       where: { tenantId, userId },
       orderBy: { createdAt: "desc" },

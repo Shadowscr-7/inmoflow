@@ -9,9 +9,17 @@ export class AiConfigService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Get AI config for tenant (returns null if none) */
-  async findByTenant(tenantId: string) {
-    return this.prisma.aiConfig.findUnique({
-      where: { tenantId },
+  async findByTenant(tenantId: string, userId?: string | null) {
+    // If userId provided, look for per-agent config first
+    if (userId) {
+      const agentConfig = await this.prisma.aiConfig.findFirst({
+        where: { tenantId, userId },
+      });
+      if (agentConfig) return agentConfig;
+    }
+    // Fall back to tenant-wide default (userId = null)
+    return this.prisma.aiConfig.findFirst({
+      where: { tenantId, userId: null },
     });
   }
 
@@ -31,6 +39,7 @@ export class AiConfigService {
     systemPrompt?: string;
     temperature?: number;
     maxTokens?: number;
+    userId?: string;
   }) {
     const data = {
       provider: dto.provider as AiProvider,
@@ -42,10 +51,22 @@ export class AiConfigService {
       maxTokens: dto.maxTokens ?? 1024,
     };
 
-    return this.prisma.aiConfig.upsert({
-      where: { tenantId },
-      create: { tenantId, ...data },
-      update: data,
+    const userId = dto.userId ?? null;
+
+    // Check if config already exists for this tenant+user
+    const existing = await this.prisma.aiConfig.findFirst({
+      where: { tenantId, userId },
+    });
+
+    if (existing) {
+      return this.prisma.aiConfig.update({
+        where: { id: existing.id },
+        data,
+      });
+    }
+
+    return this.prisma.aiConfig.create({
+      data: { tenantId, userId, ...data },
     });
   }
 

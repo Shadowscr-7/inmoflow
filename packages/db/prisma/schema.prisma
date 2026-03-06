@@ -172,6 +172,7 @@ model User {
   rules         Rule[]
   notificationPrefs NotificationPreference[]
   agentGoals        AgentGoal[]
+  aiConfigs         AiConfig[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -378,6 +379,7 @@ model Rule {
 model AiConfig {
   id           String     @id @default(uuid())
   tenantId     String
+  userId       String?    // null = tenant-wide default, set = per-agent override
   provider     AiProvider
   apiKey       String     // encrypted at rest
   model        String     // e.g. "gpt-4o", "claude-3.5-sonnet"
@@ -389,8 +391,9 @@ model AiConfig {
   updatedAt    DateTime   @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId]) // one active config per tenant
+  @@index([tenantId, userId])
 }
 
 // ─── PROPERTIES ───────────────────────────────────────

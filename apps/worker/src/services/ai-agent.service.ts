@@ -45,9 +45,15 @@ export class AiAgentService {
   /**
    * Check if tenant has a configured and enabled AI agent.
    */
-  async isAvailable(tenantId: string): Promise<boolean> {
-    const config = await this.prisma.aiConfig.findUnique({ where: { tenantId } });
-    return !!(config && config.enabled && config.apiKey);
+  async isAvailable(tenantId: string, userId?: string | null): Promise<boolean> {
+    // Check for per-agent config first, then tenant default
+    let config = userId
+      ? await this.prisma.aiConfig.findFirst({ where: { tenantId, userId, enabled: true } })
+      : null;
+    if (!config) {
+      config = await this.prisma.aiConfig.findFirst({ where: { tenantId, userId: null, enabled: true } });
+    }
+    return !!(config && config.apiKey);
   }
 
   /**
@@ -64,17 +70,23 @@ export class AiAgentService {
     instruction: string,
     inboundMessage?: string,
   ): Promise<{ content: string; aiGenerated: true; provider: string; model: string } | null> {
-    const config = await this.prisma.aiConfig.findUnique({ where: { tenantId } });
-    if (!config || !config.enabled || !config.apiKey) {
-      return null;
-    }
-
-    // Get lead context
+    // Get lead context first (needed for per-agent config lookup)
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, tenantId },
       include: { stage: true, source: true, assignee: true },
     });
     if (!lead) return null;
+
+    // Load AI config: per-agent first, then tenant default
+    let config = lead.assigneeId
+      ? await this.prisma.aiConfig.findFirst({ where: { tenantId, userId: lead.assigneeId, enabled: true } })
+      : null;
+    if (!config) {
+      config = await this.prisma.aiConfig.findFirst({ where: { tenantId, userId: null, enabled: true } });
+    }
+    if (!config || !config.apiKey) {
+      return null;
+    }
 
     // Get recent conversation history (last 10 messages)
     const recentMessages = await this.prisma.message.findMany({

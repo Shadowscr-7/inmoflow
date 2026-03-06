@@ -28,6 +28,8 @@ export class TemplatesService {
 
   /** All templates for a tenant (admin view) — includes user relation */
   async findAll(tenantId: string, filters?: { enabled?: boolean; channel?: MessageChannel }) {
+    if (!tenantId) return [];
+
     const where: Prisma.TemplateWhereInput = { tenantId };
     if (filters?.enabled !== undefined) where.enabled = filters.enabled;
     if (filters?.channel) where.channel = filters.channel;
@@ -45,6 +47,8 @@ export class TemplatesService {
     userId: string,
     filters?: { enabled?: boolean; channel?: MessageChannel },
   ) {
+    if (!tenantId) return [];
+
     const where: Prisma.TemplateWhereInput = {
       tenantId,
       OR: [{ userId }, { userId: null }],

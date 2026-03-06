@@ -15,6 +15,9 @@ export class EventLogService {
     message?: string;
     payload?: Record<string, unknown>;
   }) {
+    // Skip logging when no tenant context (super admin)
+    if (!params.tenantId) return undefined;
+
     return this.prisma.eventLog.create({
       data: {
         tenantId: params.tenantId,
@@ -38,6 +41,8 @@ export class EventLogService {
       offset?: number;
     },
   ) {
+    if (!tenantId) return [];
+
     const where: Record<string, unknown> = { tenantId };
     if (params?.entity) where.entity = params.entity;
     if (params?.entityId) where.entityId = params.entityId;

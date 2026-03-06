@@ -14,6 +14,8 @@ export class LeadSourcesService {
   ) {}
 
   async findAll(tenantId: string, type?: LeadSourceType) {
+    if (!tenantId) return [];
+
     return this.prisma.leadSource.findMany({
       where: {
         tenantId,

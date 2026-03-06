@@ -102,6 +102,8 @@ export class LeadsService {
   }
 
   async findAll(tenantId: string, filters: LeadFilters) {
+    if (!tenantId) return { data: [], total: 0, limit: filters.limit ?? 25, offset: filters.offset ?? 0 };
+
     const where: Prisma.LeadWhereInput = { tenantId };
 
     if (filters.status) where.status = filters.status;
@@ -240,6 +242,8 @@ export class LeadsService {
   }
 
   async getStages(tenantId: string) {
+    if (!tenantId) return [];
+
     return this.prisma.leadStage.findMany({
       where: { tenantId },
       orderBy: { order: "asc" },
@@ -250,6 +254,8 @@ export class LeadsService {
   }
 
   async getLeadsByStage(tenantId: string) {
+    if (!tenantId) return [];
+
     const stages = await this.prisma.leadStage.findMany({
       where: { tenantId },
       orderBy: { order: "asc" },

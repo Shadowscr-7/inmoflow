@@ -8,6 +8,7 @@ import { WorkflowProcessor } from "./processors/workflow.processor";
 import { RuleEngineService } from "./services/rule-engine.service";
 import { NoResponseScheduler } from "./services/no-response.scheduler";
 import { AiAgentService } from "./services/ai-agent.service";
+import { MessageSenderService } from "./services/message-sender.service";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AiAgentService } from "./services/ai-agent.service";
   ],
   providers: [
     AiAgentService,
+    MessageSenderService,
     RuleEngineService,
     NoResponseScheduler,
     LeadProcessor,

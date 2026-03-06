@@ -139,6 +139,29 @@ export class InboundWebhookController {
       if (stage) stageId = stage.id;
     }
 
+    // Resolve agent by name or email if provided
+    let assigneeId: string | undefined;
+    const agentValue = data.agent ?? (data.extra?.agente as string) ?? (data.extra?.agent as string);
+    if (agentValue) {
+      const user = await this.prisma.user.findFirst({
+        where: {
+          tenantId,
+          isActive: true,
+          OR: [
+            { name: { equals: agentValue, mode: "insensitive" } },
+            { email: { equals: agentValue, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true, name: true },
+      });
+      if (user) {
+        assigneeId = user.id;
+        this.logger.log(`Webhook agent "${agentValue}" resolved to user ${user.name} (${user.id.slice(0, 8)})`);
+      } else {
+        this.logger.warn(`Webhook agent "${agentValue}" not found in tenant ${tenantId.slice(0, 8)}`);
+      }
+    }
+
     const lead = await this.prisma.lead.create({
       data: {
         tenantId,
@@ -150,6 +173,7 @@ export class InboundWebhookController {
         status,
         stageId,
         sourceId,
+        assigneeId,
       },
     });
 
@@ -158,14 +182,16 @@ export class InboundWebhookController {
       type: EventType.lead_created,
       entity: "Lead",
       entityId: lead.id,
-      message: `Lead from webhook: ${data.name ?? data.phone ?? data.email ?? "unknown"}`,
-      payload: { sourceId, status },
+      message: `Lead from webhook: ${data.name ?? data.phone ?? data.email ?? "unknown"}${assigneeId ? ` → agent ${agentValue}` : ""}`,
+      payload: { sourceId, status, agent: agentValue, assigneeId },
     });
 
     // Enqueue for async rule processing (same as any other lead)
     await this.eventProducer.emitLeadCreated(tenantId, lead.id, {
       sourceType: "WEBHOOK",
       status,
+      agent: agentValue,
+      assigneeId,
     });
   }
 }
@@ -178,5 +204,6 @@ interface InboundLeadPayload {
   notes?: string;
   status?: string;
   stageKey?: string;
+  agent?: string;
   extra?: Record<string, unknown>;
 }

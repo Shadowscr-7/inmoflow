@@ -305,6 +305,8 @@ export class MetaOAuthService {
 
   /** Check if tenant has valid Meta connection */
   async getConnectionStatus(tenantId: string) {
+    if (!tenantId) return { connected: false };
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { metaUserAccessToken: true },

@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { EventType, Prisma, MessageChannel, LeadStatus } from "@inmoflow/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiAgentService } from "./ai-agent.service";
+import { MessageSenderService } from "./message-sender.service";
 
 /**
  * RuleEngineService — evaluates tenant rules and executes actions.
@@ -16,6 +17,7 @@ export class RuleEngineService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiAgent: AiAgentService,
+    private readonly messageSender: MessageSenderService,
   ) {}
 
   /**
@@ -268,10 +270,8 @@ export class RuleEngineService {
       (_match: string, key: string) => variables[key] ?? `{{${key}}}`,
     );
 
-    // Save as an outbound message (actual sending is a future enhancement)
-    // For now, store the message as "pending" — the actual channel send
-    // would need the WhatsApp/Telegram provider, which lives in the API process.
-    await this.prisma.message.create({
+    // Save as an outbound message — then attempt to actually send it.
+    const msg = await this.prisma.message.create({
       data: {
         tenantId,
         leadId,
@@ -282,7 +282,10 @@ export class RuleEngineService {
       },
     });
 
-    this.logger.debug(`Template "${action.templateKey}" queued for lead ${leadId}`);
+    // Attempt delivery through the correct channel
+    await this.messageSender.sendQueuedMessage(msg.id);
+
+    this.logger.debug(`Template "${action.templateKey}" sent for lead ${leadId}`);
   }
 
   private async actionChangeStatus(tenantId: string, leadId: string, action: RuleAction) {
@@ -391,7 +394,7 @@ export class RuleEngineService {
       this.logger.debug(`AI not available, using static fallback for lead ${leadId}`);
     }
 
-    await this.prisma.message.create({
+    const msg = await this.prisma.message.create({
       data: {
         tenantId,
         leadId,
@@ -407,7 +410,10 @@ export class RuleEngineService {
       },
     });
 
-    this.logger.debug(`AI message queued for lead ${leadId}: "${instruction}"`);
+    // Attempt delivery through the correct agent's channel
+    await this.messageSender.sendQueuedMessage(msg.id);
+
+    this.logger.debug(`AI message sent for lead ${leadId}: "${instruction}"`);
   }
 
   /**

@@ -60,6 +60,8 @@ export class NotificationsService {
     role: string,
     opts?: { unreadOnly?: boolean; limit?: number; offset?: number },
   ) {
+    if (!tenantId) return { data: [], total: 0, unread: 0 };
+
     const where: Prisma.NotificationWhereInput = { tenantId };
 
     if (role === "ADMIN") {
@@ -124,6 +126,8 @@ export class NotificationsService {
 
   /** Get notification preferences for a user (create defaults if not exist) */
   async getPreferences(tenantId: string, userId: string) {
+    if (!tenantId) return null;
+
     let prefs = await this.prisma.notificationPreference.findUnique({
       where: { tenantId_userId: { tenantId, userId } },
     });
@@ -147,6 +151,8 @@ export class NotificationsService {
       pushSubscription?: unknown;
     },
   ) {
+    if (!tenantId) return null;
+
     return this.prisma.notificationPreference.upsert({
       where: { tenantId_userId: { tenantId, userId } },
       create: {

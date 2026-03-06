@@ -51,6 +51,8 @@ export class RulesService {
 
   /** All rules for a tenant (admin view) — includes user relation */
   async findAll(tenantId: string, filters?: { trigger?: string; enabled?: boolean }) {
+    if (!tenantId) return [];
+
     const where: Prisma.RuleWhereInput = { tenantId };
     if (filters?.trigger) where.trigger = filters.trigger;
     if (filters?.enabled !== undefined) where.enabled = filters.enabled;
@@ -68,6 +70,8 @@ export class RulesService {
     userId: string,
     filters?: { trigger?: string; enabled?: boolean },
   ) {
+    if (!tenantId) return [];
+
     const where: Prisma.RuleWhereInput = {
       tenantId,
       OR: [{ userId }, { userId: null }],

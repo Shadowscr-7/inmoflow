@@ -59,10 +59,17 @@ export class MessagesService {
       to = lead.whatsappFrom ?? lead.phone ?? undefined;
       if (!to) throw new BadRequestException("Lead has no WhatsApp number");
 
-      // Find WA channel for this tenant
-      const waChannel = await this.prisma.channel.findFirst({
-        where: { tenantId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
-      });
+      // Find WA channel — prefer the assigned agent's channel, fallback to any tenant channel
+      let waChannel = lead.assigneeId
+        ? await this.prisma.channel.findFirst({
+            where: { tenantId, userId: lead.assigneeId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
+          })
+        : null;
+      if (!waChannel) {
+        waChannel = await this.prisma.channel.findFirst({
+          where: { tenantId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
+        });
+      }
       if (!waChannel?.providerInstanceId) {
         throw new BadRequestException("WhatsApp channel not connected");
       }
@@ -74,10 +81,17 @@ export class MessagesService {
       ) as { key?: { id?: string } };
       providerMessageId = result?.key?.id;
     } else if (channel === MessageChannel.TELEGRAM) {
-      // Find TG channel with chatId
-      const tgChannel = await this.prisma.channel.findFirst({
-        where: { tenantId, type: "TELEGRAM", status: ChannelStatus.CONNECTED },
-      });
+      // Find TG channel — prefer assigned agent's channel, fallback to any
+      let tgChannel = lead.assigneeId
+        ? await this.prisma.channel.findFirst({
+            where: { tenantId, userId: lead.assigneeId, type: "TELEGRAM", status: ChannelStatus.CONNECTED },
+          })
+        : null;
+      if (!tgChannel) {
+        tgChannel = await this.prisma.channel.findFirst({
+          where: { tenantId, type: "TELEGRAM", status: ChannelStatus.CONNECTED },
+        });
+      }
       if (!tgChannel?.telegramChatId) {
         throw new BadRequestException("Telegram channel not connected");
       }
@@ -138,10 +152,17 @@ export class MessagesService {
     // Strip + prefix — WhatsApp JIDs use bare numbers
     const phone = rawPhone.replace(/^\+/, "");
 
-    // Find a connected WhatsApp channel for this tenant
-    const waChannel = await this.prisma.channel.findFirst({
-      where: { tenantId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
-    });
+    // Find WA channel — prefer the assigned agent's channel, fallback to any tenant channel
+    let waChannel = lead.assigneeId
+      ? await this.prisma.channel.findFirst({
+          where: { tenantId, userId: lead.assigneeId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
+        })
+      : null;
+    if (!waChannel) {
+      waChannel = await this.prisma.channel.findFirst({
+        where: { tenantId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
+      });
+    }
     if (!waChannel?.providerInstanceId) return { synced: 0 };
 
     // Build the remote JID — add @s.whatsapp.net if not present
