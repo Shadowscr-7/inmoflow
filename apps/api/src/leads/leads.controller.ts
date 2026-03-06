@@ -29,6 +29,7 @@ export class LeadsController {
   @Get()
   findAll(
     @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string; role: string },
     @Query("status") status?: LeadStatus,
     @Query("stageId") stageId?: string,
     @Query("assigneeId") assigneeId?: string,
@@ -43,7 +44,7 @@ export class LeadsController {
       search,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
-    });
+    }, user);
   }
 
   @Get("stages")
@@ -52,8 +53,8 @@ export class LeadsController {
   }
 
   @Get("pipeline")
-  getPipeline(@TenantId() tenantId: string) {
-    return this.leadsService.getLeadsByStage(tenantId);
+  getPipeline(@TenantId() tenantId: string, @CurrentUser() user: { userId: string; role: string }) {
+    return this.leadsService.getLeadsByStage(tenantId, user);
   }
 
   /** Create a new pipeline stage — BUSINESS/ADMIN only */
@@ -102,8 +103,8 @@ export class LeadsController {
   }
 
   @Get(":id")
-  findOne(@TenantId() tenantId: string, @Param("id") id: string) {
-    return this.leadsService.findById(tenantId, id);
+  findOne(@TenantId() tenantId: string, @CurrentUser() user: { userId: string; role: string }, @Param("id") id: string) {
+    return this.leadsService.findById(tenantId, id, user);
   }
 
   @Patch(":id")
@@ -124,7 +125,7 @@ export class LeadsController {
   }
 
   @Get(":id/timeline")
-  getTimeline(@TenantId() tenantId: string, @Param("id") id: string) {
-    return this.leadsService.getTimeline(tenantId, id);
+  getTimeline(@TenantId() tenantId: string, @CurrentUser() user: { userId: string; role: string }, @Param("id") id: string) {
+    return this.leadsService.getTimeline(tenantId, id, user);
   }
 }

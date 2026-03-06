@@ -37,6 +37,12 @@ export interface LeadFilters {
   offset?: number;
 }
 
+export interface CurrentUserInfo {
+  userId: string;
+  role: string;
+  tenantId?: string;
+}
+
 @Injectable()
 export class LeadsService {
   constructor(
@@ -101,14 +107,20 @@ export class LeadsService {
     return lead;
   }
 
-  async findAll(tenantId: string, filters: LeadFilters) {
+  async findAll(tenantId: string, filters: LeadFilters, currentUser?: CurrentUserInfo) {
     if (!tenantId) return { data: [], total: 0, limit: filters.limit ?? 25, offset: filters.offset ?? 0 };
 
     const where: Prisma.LeadWhereInput = { tenantId };
 
     if (filters.status) where.status = filters.status;
     if (filters.stageId) where.stageId = filters.stageId;
-    if (filters.assigneeId) where.assigneeId = filters.assigneeId;
+
+    // AGENT role: only see their own assigned leads
+    if (currentUser?.role === 'AGENT') {
+      where.assigneeId = currentUser.userId;
+    } else if (filters.assigneeId) {
+      where.assigneeId = filters.assigneeId;
+    }
     if (filters.search) {
       where.OR = [
         { name: { contains: filters.search, mode: "insensitive" } },
@@ -139,9 +151,14 @@ export class LeadsService {
     return { data, total, limit, offset };
   }
 
-  async findById(tenantId: string, leadId: string) {
+  async findById(tenantId: string, leadId: string, currentUser?: CurrentUserInfo) {
+    const whereClause: Prisma.LeadWhereInput = { id: leadId, tenantId };
+    // AGENT role: can only see their own leads
+    if (currentUser?.role === 'AGENT') {
+      whereClause.assigneeId = currentUser.userId;
+    }
     const lead = await this.prisma.lead.findFirst({
-      where: { id: leadId, tenantId },
+      where: whereClause,
       include: {
         stage: true,
         assignee: { select: { id: true, name: true, email: true } },
@@ -253,21 +270,27 @@ export class LeadsService {
     });
   }
 
-  async getLeadsByStage(tenantId: string) {
+  async getLeadsByStage(tenantId: string, currentUser?: CurrentUserInfo) {
     if (!tenantId) return [];
+
+    // AGENT role: only see their own leads in the pipeline
+    const leadsWhere: Prisma.LeadWhereInput = currentUser?.role === 'AGENT'
+      ? { assigneeId: currentUser.userId }
+      : {};
 
     const stages = await this.prisma.leadStage.findMany({
       where: { tenantId },
       orderBy: { order: "asc" },
       include: {
         leads: {
+          where: leadsWhere,
           orderBy: { createdAt: "desc" },
           take: 50,
           include: {
             assignee: { select: { id: true, name: true, email: true } },
           },
         },
-        _count: { select: { leads: true } },
+        _count: { select: { leads: { where: leadsWhere } } },
       },
     });
     return stages;
@@ -365,10 +388,14 @@ export class LeadsService {
     return this.getStages(tenantId);
   }
 
-  async getTimeline(tenantId: string, leadId: string) {
-    // Verify lead belongs to tenant
+  async getTimeline(tenantId: string, leadId: string, currentUser?: CurrentUserInfo) {
+    // Verify lead belongs to tenant (and to agent if AGENT role)
+    const whereClause: Prisma.LeadWhereInput = { id: leadId, tenantId };
+    if (currentUser?.role === 'AGENT') {
+      whereClause.assigneeId = currentUser.userId;
+    }
     const lead = await this.prisma.lead.findFirst({
-      where: { id: leadId, tenantId },
+      where: whereClause,
     });
     if (!lead) throw new NotFoundException("Lead not found");
 
