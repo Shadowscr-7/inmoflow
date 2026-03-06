@@ -143,7 +143,8 @@ export class InboundWebhookController {
     let assigneeId: string | undefined;
     const agentValue = data.agent ?? (data.extra?.agente as string) ?? (data.extra?.agent as string);
     if (agentValue) {
-      const user = await this.prisma.user.findFirst({
+      // Try exact match first (name or email), then partial match (contains)
+      let user = await this.prisma.user.findFirst({
         where: {
           tenantId,
           isActive: true,
@@ -154,6 +155,22 @@ export class InboundWebhookController {
         },
         select: { id: true, name: true },
       });
+
+      // Fallback: partial name match (e.g. "Javier" matches "Javier Rodriguez")
+      if (!user) {
+        user = await this.prisma.user.findFirst({
+          where: {
+            tenantId,
+            isActive: true,
+            OR: [
+              { name: { contains: agentValue, mode: "insensitive" } },
+              { name: { startsWith: agentValue, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true, name: true },
+        });
+      }
+
       if (user) {
         assigneeId = user.id;
         this.logger.log(`Webhook agent "${agentValue}" resolved to user ${user.name} (${user.id.slice(0, 8)})`);
