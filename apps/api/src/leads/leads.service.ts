@@ -104,6 +104,11 @@ export class LeadsService {
       status: lead.status,
     });
 
+    // If lead was created with an assignee, also fire lead.assigned
+    if (lead.assigneeId) {
+      await this.eventProducer.emitLeadAssigned(tenantId, lead.id, lead.assigneeId);
+    }
+
     return lead;
   }
 
@@ -236,6 +241,16 @@ export class LeadsService {
 
       // Enqueue for async rule processing
       await this.eventProducer.emitLeadUpdated(tenantId, leadId, changes);
+
+      // If the assignee changed, also fire lead.assigned
+      if (changes.assigneeId && changes.assigneeId !== existing.assigneeId) {
+        await this.eventProducer.emitLeadAssigned(
+          tenantId,
+          leadId,
+          changes.assigneeId as string,
+          existing.assigneeId,
+        );
+      }
     }
 
     return updated;

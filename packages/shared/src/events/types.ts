@@ -17,6 +17,18 @@ export type LeadCreatedPayload = {
     | "MANUAL";
 };
 
+export type LeadAssignedPayload = {
+  leadId: string;
+  assigneeId: string;
+  previousAssigneeId?: string | null;
+};
+
+export type LeadContactedPayload = {
+  leadId: string;
+  messageId: string;
+  channel: "WHATSAPP" | "TELEGRAM" | "WEB";
+};
+
 export type MessageInboundPayload = {
   leadId: string;
   messageId: string;
@@ -52,6 +64,8 @@ export type ProviderErrorPayload = {
 
 // ─── Typed event aliases ──────────────────────────────
 export type LeadCreatedEvent = BaseEvent<"lead.created", LeadCreatedPayload>;
+export type LeadAssignedEvent = BaseEvent<"lead.assigned", LeadAssignedPayload>;
+export type LeadContactedEvent = BaseEvent<"lead.contacted", LeadContactedPayload>;
 export type MessageInboundEvent = BaseEvent<"message.inbound", MessageInboundPayload>;
 export type MessageSendRequestedEvent = BaseEvent<"message.send_requested", MessageSendRequestedPayload>;
 export type ChannelConnectedEvent = BaseEvent<"channel.connected", ChannelConnectedPayload>;

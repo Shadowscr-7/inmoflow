@@ -23,6 +23,12 @@ export class LeadProcessor extends WorkerHost {
       case "lead.updated":
         await this.handleLeadUpdated(job.data);
         break;
+      case "lead.assigned":
+        await this.handleLeadAssigned(job.data);
+        break;
+      case "lead.contacted":
+        await this.handleLeadContacted(job.data);
+        break;
       case "stage.changed":
         await this.handleStageChanged(job.data);
         break;
@@ -93,6 +99,42 @@ export class LeadProcessor extends WorkerHost {
 
     this.logger.log(
       `stage.changed rules: ${result.rulesMatched} matched, ${result.actionsExecuted} actions`,
+    );
+  }
+
+  private async handleLeadAssigned(data: Record<string, unknown>) {
+    const { tenantId, leadId, assigneeId, previousAssigneeId, ...context } = data;
+    this.logger.log(
+      `Lead assigned: ${leadId} → ${assigneeId}${previousAssigneeId ? ` (was: ${previousAssigneeId})` : ""} (tenant: ${tenantId})`,
+    );
+
+    const result = await this.ruleEngine.evaluate(
+      tenantId as string,
+      "lead.assigned",
+      leadId as string,
+      { ...context, assigneeId, previousAssigneeId },
+    );
+
+    this.logger.log(
+      `lead.assigned rules: ${result.rulesMatched} matched, ${result.actionsExecuted} actions`,
+    );
+  }
+
+  private async handleLeadContacted(data: Record<string, unknown>) {
+    const { tenantId, leadId, messageId, channel, ...context } = data;
+    this.logger.log(
+      `Lead contacted (first reply): ${leadId} via ${channel} (tenant: ${tenantId})`,
+    );
+
+    const result = await this.ruleEngine.evaluate(
+      tenantId as string,
+      "lead.contacted",
+      leadId as string,
+      { ...context, messageId, channel },
+    );
+
+    this.logger.log(
+      `lead.contacted rules: ${result.rulesMatched} matched, ${result.actionsExecuted} actions`,
     );
   }
 }

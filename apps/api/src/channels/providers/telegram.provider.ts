@@ -278,6 +278,11 @@ export class TelegramProvider implements OnModuleInit {
           sourceType: "TELEGRAM",
           channel: "TELEGRAM",
         });
+
+        // Lead was auto-assigned to the channel owner
+        if (channel.userId) {
+          await this.eventProducer.emitLeadAssigned(tenantId, lead.id, channel.userId);
+        }
       }
 
       // Save the message
@@ -303,6 +308,14 @@ export class TelegramProvider implements OnModuleInit {
       });
 
       await this.eventProducer.emitMessageInbound(tenantId, lead.id, savedMsg.id, "TELEGRAM");
+
+      // Detect first inbound message from this lead → emit lead.contacted
+      const inboundCount = await this.prisma.message.count({
+        where: { tenantId, leadId: lead.id, direction: "IN" },
+      });
+      if (inboundCount === 1) {
+        await this.eventProducer.emitLeadContacted(tenantId, lead.id, savedMsg.id, "TELEGRAM");
+      }
     } catch (err) {
       this.logger.error(`Inbound TG message error: ${(err as Error).message}`);
     }

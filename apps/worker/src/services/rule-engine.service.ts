@@ -7,8 +7,12 @@ import { MessageSenderService } from "./message-sender.service";
 /**
  * RuleEngineService — evaluates tenant rules and executes actions.
  *
- * Supported triggers: lead.created, lead.updated, message.inbound, stage.changed, no_response
+ * Supported triggers: lead.created, lead.updated, lead.assigned, lead.contacted, message.inbound, stage.changed, no_response
  * Supported actions: assign, send_template, change_status, change_stage, add_note, notify, send_ai_message, wait
+ *
+ * Rule scoping:
+ * - Global rules (userId = null): fire for ALL leads in the tenant.
+ * - User rules (userId = X): fire ONLY when the lead is assigned to user X.
  */
 @Injectable()
 export class RuleEngineService {
@@ -29,15 +33,7 @@ export class RuleEngineService {
     leadId: string,
     context: Record<string, unknown> = {},
   ): Promise<{ rulesMatched: number; actionsExecuted: number }> {
-    // Fetch all enabled rules for this trigger, ordered by priority
-    const rules = await this.prisma.rule.findMany({
-      where: { tenantId, trigger, enabled: true },
-      orderBy: { priority: "asc" },
-    });
-
-    if (rules.length === 0) return { rulesMatched: 0, actionsExecuted: 0 };
-
-    // Get lead data for condition evaluation
+    // Get lead data first — needed for both rule scoping and condition evaluation
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, tenantId },
       include: { stage: true, source: true, assignee: true },
@@ -47,6 +43,25 @@ export class RuleEngineService {
       this.logger.warn(`Lead ${leadId} not found for rule evaluation`);
       return { rulesMatched: 0, actionsExecuted: 0 };
     }
+
+    // Fetch rules scoped to this lead's assignee:
+    //  - Global rules (userId IS NULL) always fire.
+    //  - User-specific rules fire ONLY when the lead is assigned to that user.
+    const ruleWhere: Prisma.RuleWhereInput = {
+      tenantId,
+      trigger,
+      enabled: true,
+      OR: lead.assigneeId
+        ? [{ userId: null }, { userId: lead.assigneeId }]
+        : [{ userId: null }],
+    };
+
+    const rules = await this.prisma.rule.findMany({
+      where: ruleWhere,
+      orderBy: { priority: "asc" },
+    });
+
+    if (rules.length === 0) return { rulesMatched: 0, actionsExecuted: 0 };
 
     // Build evaluation context
     const evalContext: Record<string, unknown> = {

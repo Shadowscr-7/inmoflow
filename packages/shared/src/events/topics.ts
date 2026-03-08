@@ -1,6 +1,8 @@
 export const Topics = {
   LEAD_CREATED: "lead.created",
   LEAD_UPDATED: "lead.updated",
+  LEAD_ASSIGNED: "lead.assigned",
+  LEAD_CONTACTED: "lead.contacted",
   MESSAGE_INBOUND: "message.inbound",
   MESSAGE_SEND_REQUESTED: "message.send_requested",
   MESSAGE_SENT: "message.sent",

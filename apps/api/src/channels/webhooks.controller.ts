@@ -390,6 +390,11 @@ export class WebhooksController {
         sourceType: "WHATSAPP",
         channel: "WHATSAPP",
       });
+
+      // Lead was auto-assigned to the channel owner
+      if (channel.userId) {
+        await this.eventProducer.emitLeadAssigned(tenantId, lead.id, channel.userId);
+      }
     }
 
     // Save message
@@ -416,6 +421,14 @@ export class WebhooksController {
     });
 
     await this.eventProducer.emitMessageInbound(tenantId, lead.id, message.id, "WHATSAPP");
+
+    // Detect first inbound message from this lead → emit lead.contacted
+    const inboundCount = await this.prisma.message.count({
+      where: { tenantId, leadId: lead.id, direction: "IN" },
+    });
+    if (inboundCount === 1) {
+      await this.eventProducer.emitLeadContacted(tenantId, lead.id, message.id, "WHATSAPP");
+    }
 
     this.logger.log(`WA msg IN: ${phone} → tenant ${tenantId.slice(0, 8)}`);
   }

@@ -55,6 +55,50 @@ export class EventProducerService {
     this.logger.debug(`Enqueued lead.updated [${job.id}] lead=${leadId}`);
   }
 
+  /**
+   * Enqueue a lead.assigned event — fires when a lead is assigned (or reassigned) to a user.
+   */
+  async emitLeadAssigned(
+    tenantId: string,
+    leadId: string,
+    assigneeId: string,
+    previousAssigneeId?: string | null,
+  ) {
+    const job = await this.leadQueue.add(
+      "lead.assigned",
+      { tenantId, leadId, assigneeId, previousAssigneeId },
+      {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    );
+    this.logger.debug(`Enqueued lead.assigned [${job.id}] lead=${leadId} → user=${assigneeId}`);
+  }
+
+  /**
+   * Enqueue a lead.contacted event — fires when the client responds for the first time.
+   */
+  async emitLeadContacted(
+    tenantId: string,
+    leadId: string,
+    messageId: string,
+    channel: string,
+  ) {
+    const job = await this.leadQueue.add(
+      "lead.contacted",
+      { tenantId, leadId, messageId, channel },
+      {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      },
+    );
+    this.logger.debug(`Enqueued lead.contacted [${job.id}] lead=${leadId}`);
+  }
+
   async emitMessageInbound(
     tenantId: string,
     leadId: string,

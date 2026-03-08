@@ -213,6 +213,11 @@ export class InboundWebhookController {
       agent: agentValue,
       assigneeId,
     });
+
+    // If lead was assigned to an agent, also fire lead.assigned
+    if (assigneeId) {
+      await this.eventProducer.emitLeadAssigned(tenantId, lead.id, assigneeId);
+    }
   }
 }
 

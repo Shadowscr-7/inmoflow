@@ -25,6 +25,8 @@ const VALID_ACTION_TYPES = [
 const VALID_TRIGGERS = [
   "lead.created",
   "lead.updated",
+  "lead.assigned",
+  "lead.contacted",
   "message.inbound",
   "stage.changed",
   "no_response",
