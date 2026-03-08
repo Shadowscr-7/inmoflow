@@ -22,17 +22,25 @@ import { MessageChannel } from "@inmoflow/db";
 export class TemplatesController {
   constructor(private readonly templates: TemplatesService) {}
 
-  /** All templates (admin sees all, includes user info) */
+  /** All templates — BUSINESS/ADMIN see all, AGENT sees own + global */
   @Get()
   findAll(
     @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string; role: string },
     @Query("enabled") enabled?: string,
     @Query("channel") channel?: string,
   ) {
-    return this.templates.findAll(tenantId, {
+    const filters = {
       enabled: enabled !== undefined ? enabled === "true" : undefined,
       channel: channel as MessageChannel | undefined,
-    });
+    };
+
+    // AGENT users only see their own templates + global ones
+    if (user.role === "AGENT") {
+      return this.templates.findForUser(tenantId, user.userId, filters);
+    }
+
+    return this.templates.findAll(tenantId, filters);
   }
 
   /** Templates visible to the current user: own + global */

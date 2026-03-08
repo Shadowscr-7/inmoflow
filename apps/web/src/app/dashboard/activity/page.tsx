@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { CirclePlus, Edit, ArrowRightLeft, Zap, MessageSquareText, KeyRound, Link, Activity } from "lucide-react";
+import { CirclePlus, Edit, ArrowRightLeft, Zap, MessageSquareText, KeyRound, Link, Activity, UserCheck } from "lucide-react";
 import { PageHeader, PageLoader, EmptyState, Badge } from "@/components/ui";
 
 interface EventLogEntry {
@@ -20,6 +20,8 @@ interface EventLogEntry {
 const TYPE_ICONS: Record<string, typeof Activity> = {
   lead_created: CirclePlus,
   lead_updated: Edit,
+  lead_assigned: UserCheck,
+  lead_contacted: MessageSquareText,
   message_inbound: MessageSquareText,
   message_outbound: MessageSquareText,
   channel_connected: Link,
@@ -32,6 +34,8 @@ const TYPE_ICONS: Record<string, typeof Activity> = {
 const TYPE_COLORS: Record<string, string> = {
   lead_created: "bg-emerald-50 text-emerald-600",
   lead_updated: "bg-blue-50 text-blue-600",
+  lead_assigned: "bg-amber-50 text-amber-600",
+  lead_contacted: "bg-teal-50 text-teal-600",
   message_inbound: "bg-brand-50 text-brand-600",
   message_outbound: "bg-cyan-50 text-cyan-600",
   channel_connected: "bg-green-50 text-green-600",
@@ -44,6 +48,8 @@ const TYPE_COLORS: Record<string, string> = {
 const TYPE_LABELS: Record<string, string> = {
   lead_created: "Lead creado",
   lead_updated: "Lead actualizado",
+  lead_assigned: "Lead asignado",
+  lead_contacted: "Lead contactado",
   message_inbound: "Mensaje entrante",
   message_outbound: "Mensaje saliente",
   channel_connected: "Canal conectado",

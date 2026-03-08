@@ -10,6 +10,8 @@ import { PageHeader, Modal, EmptyState, Toggle, Badge, PageLoader, useToast, use
 
 const TRIGGER_OPTIONS = [
   { value: "lead.created", label: "Lead creado", description: "Cuando un lead nuevo llega al sistema", icon: "➕" },
+  { value: "lead.assigned", label: "Lead asignado", description: "Cuando un lead es asignado a un agente", icon: "👤" },
+  { value: "lead.contacted", label: "Lead contactado", description: "Cuando el cliente responde por primera vez", icon: "✅" },
   { value: "lead.updated", label: "Lead actualizado", description: "Cuando se modifica un lead existente", icon: "✏️" },
   { value: "message.inbound", label: "Mensaje entrante", description: "Cuando un cliente envía un mensaje", icon: "💬" },
   { value: "stage.changed", label: "Cambio de etapa", description: "Cuando un lead cambia de etapa en el embudo", icon: "🔄" },

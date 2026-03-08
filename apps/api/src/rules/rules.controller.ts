@@ -21,17 +21,25 @@ import { CreateRuleDto, UpdateRuleDto } from "./dto";
 export class RulesController {
   constructor(private readonly rules: RulesService) {}
 
-  /** All rules (admin view, includes user info) */
+  /** All rules — BUSINESS/ADMIN see all, AGENT sees own + global */
   @Get()
   findAll(
     @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string; role: string },
     @Query("trigger") trigger?: string,
     @Query("enabled") enabled?: string,
   ) {
-    return this.rules.findAll(tenantId, {
+    const filters = {
       trigger,
       enabled: enabled !== undefined ? enabled === "true" : undefined,
-    });
+    };
+
+    // AGENT users only see their own rules + global ones
+    if (user.role === "AGENT") {
+      return this.rules.findForUser(tenantId, user.userId, filters);
+    }
+
+    return this.rules.findAll(tenantId, filters);
   }
 
   /** Rules visible to the current user: own + global */
