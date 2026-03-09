@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma, CommissionStatus, OperationType } from "@inmoflow/db";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -65,10 +66,10 @@ export class CommissionsService {
       offset?: number;
     },
   ) {
-    const where: any = { tenantId };
+    const where: Prisma.CommissionWhereInput = { tenantId };
     if (filters?.agentId) where.agentId = filters.agentId;
-    if (filters?.status) where.status = filters.status;
-    if (filters?.operationType) where.operationType = filters.operationType;
+    if (filters?.status) where.status = filters.status as CommissionStatus;
+    if (filters?.operationType) where.operationType = filters.operationType as OperationType;
     if (filters?.from || filters?.to) {
       where.createdAt = {};
       if (filters.from) where.createdAt.gte = new Date(filters.from);
@@ -197,7 +198,7 @@ export class CommissionsService {
   // ─── Reporting / Summary ──────────────────────────
 
   async getSummary(tenantId: string, filters?: { agentId?: string; from?: string; to?: string }) {
-    const where: any = { tenantId };
+    const where: Prisma.CommissionWhereInput = { tenantId };
     if (filters?.agentId) where.agentId = filters.agentId;
     if (filters?.from || filters?.to) {
       where.createdAt = {};

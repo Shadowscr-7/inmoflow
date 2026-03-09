@@ -1,13 +1,11 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
-import { api, SummaryReport } from "@/lib/api";
+import { api, SummaryReport, API_URL } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import { BarChart3, Download, Calendar, TrendingUp, Users, Building2, CalendarCheck } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function ReportsPage() {
   const { token } = useAuth();
@@ -26,7 +24,7 @@ export default function ReportsPage() {
       if (to) params.to = to;
       const res = await api.getSummaryReport(token, params);
       setReport(res);
-    } catch { /* */ }
+    } catch { toast.error("Error al cargar reporte"); }
     setLoading(false);
   }, [token, from, to]);
 

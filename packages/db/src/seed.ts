@@ -9,6 +9,11 @@ import {
   Plan,
 } from "@prisma/client";
 
+if (process.env.NODE_ENV === "production") {
+  console.log("⚠️  Seed skipped in production. Use a dedicated migration instead.");
+  process.exit(0);
+}
+
 const prisma = new PrismaClient();
 
 async function hashPassword(password: string): Promise<string> {

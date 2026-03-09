@@ -53,7 +53,7 @@ export default function FollowUpsPage() {
     try {
       const res = await api.getSequences(token);
       setSequences(res);
-    } catch { /* */ }
+    } catch { toast.error("Error al cargar secuencias"); }
     setLoading(false);
   }, [token]);
 
@@ -139,7 +139,7 @@ export default function FollowUpsPage() {
     try {
       await api.updateSequence(token, s.id, { enabled: !s.enabled });
       load();
-    } catch { /* */ }
+    } catch { toast.error("Error al actualizar secuencia"); }
   };
 
   return (

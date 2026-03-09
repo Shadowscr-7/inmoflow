@@ -117,7 +117,7 @@ export class LeadScoringService {
     return updated;
   }
 
-  /** Recalculate all leads in a tenant */
+  /** Recalculate all leads in a tenant — batched for performance */
   async scoreAllLeads(tenantId: string) {
     const leads = await this.prisma.lead.findMany({
       where: { tenantId },
@@ -125,9 +125,11 @@ export class LeadScoringService {
     });
 
     let updated = 0;
-    for (const lead of leads) {
-      await this.scoreLead(lead.id, tenantId);
-      updated++;
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+      const batch = leads.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map((lead) => this.scoreLead(lead.id, tenantId)));
+      updated += batch.length;
     }
 
     return { updated };

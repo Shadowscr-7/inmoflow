@@ -49,7 +49,7 @@ export class PublicController {
 
   /** Generate QR code SVG for a property */
   @Get("properties/:tenantId/:slug/qr")
-  getQrCode(
+  async getQrCode(
     @Param("tenantId") tenantId: string,
     @Param("slug") slug: string,
     @Headers("host") host: string,
@@ -57,7 +57,7 @@ export class PublicController {
   ) {
     const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
     const frontendUrl = process.env.FRONTEND_URL ?? `${protocol}://${host?.split(":")[0] ?? "localhost"}:3000`;
-    const svg = this.publicService.generateQrSvg(frontendUrl, tenantId, slug);
+    const svg = await this.publicService.generateQrSvg(frontendUrl, tenantId, slug);
     res.set("Content-Type", "image/svg+xml");
     res.set("Cache-Control", "public, max-age=86400");
     res.send(svg);

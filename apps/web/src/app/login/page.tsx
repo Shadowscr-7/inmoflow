@@ -190,7 +190,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {process.env.NODE_ENV !== "production" && (
+            {process.env.NEXT_PUBLIC_SHOW_DEMO === "true" && (
               <div className="mt-6 pt-6 border-t border-white/[0.06]">
                 <p className="text-xs text-center text-gray-500">
                   Demo: <span className="text-gray-400">admin@demoa.com</span> / <span className="text-gray-400">password123</span>

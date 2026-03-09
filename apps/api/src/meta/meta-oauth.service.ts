@@ -366,6 +366,8 @@ export class MetaOAuthService {
 
   /** Get the secret used for HMAC-signing OAuth state params */
   private getSigningSecret(): string {
-    return process.env.JWT_SECRET ?? "fallback-insecure-secret";
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error("JWT_SECRET environment variable is required");
+    return secret;
   }
 }

@@ -77,7 +77,7 @@ export default function VisitsPage() {
       ]);
       setVisits(v);
       setStats(s);
-    } catch { /* */ }
+    } catch { toast.error("Error al cargar visitas"); }
     setLoading(false);
   }, [token, from, to]);
 
@@ -92,7 +92,7 @@ export default function VisitsPage() {
       ]);
       setLeads(l.data);
       setProperties(p.data);
-    } catch { /* */ }
+    } catch { toast.error("Error al cargar formulario"); }
   };
 
   const openCreate = (day?: Date) => {

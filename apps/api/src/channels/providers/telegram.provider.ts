@@ -29,7 +29,7 @@ export class TelegramProvider implements OnModuleInit {
   }
 
   onModuleInit() {
-    if (!this.botToken || this.botToken === "change-me") {
+    if (!this.botToken) {
       this.logger.warn("TELEGRAM_BOT_TOKEN not set — Telegram polling disabled");
       return;
     }
@@ -68,7 +68,7 @@ export class TelegramProvider implements OnModuleInit {
   // ─── Internal ───────────────────────────────────────
 
   private getBotUsername(): string {
-    return "InmoFlowBot";
+    return process.env.TELEGRAM_BOT_USERNAME ?? "InmoFlowBot";
   }
 
   private startPolling() {
@@ -326,7 +326,9 @@ export class TelegramProvider implements OnModuleInit {
   }
 
   private getSigningSecret(): string {
-    return process.env.JWT_SECRET ?? "fallback-insecure-secret";
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error("JWT_SECRET environment variable is required");
+    return secret;
   }
 }
 

@@ -32,13 +32,16 @@ export class MetaWebhookController {
     private readonly eventProducer: EventProducerService,
     private readonly leadSources: LeadSourcesService,
   ) {
-    this.verifyToken = process.env.META_VERIFY_TOKEN ?? "inmoflow-meta-verify";
+    this.verifyToken = process.env.META_VERIFY_TOKEN ?? "";
     this.appSecret = process.env.META_APP_SECRET;
   }
 
   /** Verify Meta X-Hub-Signature-256 HMAC */
   private verifySignature(req: Request): boolean {
-    if (!this.appSecret) return true; // skip if not configured (dev mode)
+    if (!this.appSecret) {
+      if (process.env.NODE_ENV === "production") return false;
+      return true; // skip signature check in development only
+    }
     const signature = req.headers["x-hub-signature-256"] as string | undefined;
     if (!signature) return false;
     const body = JSON.stringify(req.body);

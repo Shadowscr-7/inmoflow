@@ -37,7 +37,7 @@ export default function CustomFieldsPage() {
     try {
       const res = await api.getCustomFields(token);
       setFields(res);
-    } catch { /* */ }
+    } catch { toast.error("Error al cargar campos"); }
     setLoading(false);
   }, [token]);
 

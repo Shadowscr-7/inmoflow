@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
-import { api, Property, WhatsAppShare } from "@/lib/api";
+import { api, Property, WhatsAppShare, API_URL } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import {
   Building2, Plus, Search, X, Edit2, Trash2, MapPin, BedDouble, Bath, Car, Ruler, DollarSign, Eye, QrCode, Share2, ExternalLink,
@@ -59,7 +59,7 @@ export default function PropertiesPage() {
       const res = await api.getProperties(token, params);
       setProperties(res.data);
       setTotal(res.total);
-    } catch { /* */ }
+    } catch { toast.error("Error al cargar propiedades"); }
     setLoading(false);
   }, [token, search, statusFilter]);
 
@@ -223,7 +223,7 @@ export default function PropertiesPage() {
               {/* QR + WhatsApp + Public Link */}
               <div className="flex flex-wrap gap-2 pt-2 border-t dark:border-gray-700">
                 <a
-                  href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/public/properties/${viewing.tenantId}/${viewing.slug}/qr`}
+                  href={`${API_URL}/api/public/properties/${viewing.tenantId}/${viewing.slug}/qr`}
                   target="_blank"
                   rel="noopener"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"

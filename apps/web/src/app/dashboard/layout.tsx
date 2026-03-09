@@ -113,7 +113,7 @@ export default function DashboardLayout({
     }
     api.getPlanLimits(token)
       .then((res) => setTenantPlan(res.plan))
-      .catch(() => {});
+      .catch(() => { /* plan info non-critical */ });
   }, [token, user]);
 
   // Filter nav items by role AND plan

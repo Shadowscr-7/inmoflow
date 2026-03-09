@@ -97,8 +97,13 @@ export class RuleEngineService {
         try {
           // Handle wait/delay actions
           if (action.type === "wait" && action.delayMs) {
-            this.logger.debug(`Waiting ${action.delayMs}ms before next action`);
-            await this.sleep(Math.min(action.delayMs, 300_000)); // max 5 min in-process
+            const MAX_IN_PROCESS_WAIT = 300_000; // 5 minutes max
+            if (action.delayMs > MAX_IN_PROCESS_WAIT) {
+              this.logger.warn(`Wait action ${action.delayMs}ms exceeds max ${MAX_IN_PROCESS_WAIT}ms — capping. Use scheduled jobs for longer delays.`);
+            }
+            const waitMs = Math.min(action.delayMs, MAX_IN_PROCESS_WAIT);
+            this.logger.debug(`Waiting ${waitMs}ms before next action`);
+            await this.sleep(waitMs);
             actionsExecuted++;
             continue;
           }
@@ -144,6 +149,52 @@ export class RuleEngineService {
     }
 
     return { rulesMatched, actionsExecuted };
+  }
+
+  /** Execute a single rule by ID (for manual "Run Now" from UI) */
+  async executeSingleRule(
+    tenantId: string,
+    ruleId: string,
+    leadId: string,
+  ): Promise<{ actionsExecuted: number }> {
+    const rule = await this.prisma.rule.findFirst({
+      where: { id: ruleId, tenantId },
+    });
+    if (!rule) {
+      this.logger.warn(`Rule ${ruleId} not found in tenant ${tenantId}`);
+      return { actionsExecuted: 0 };
+    }
+
+    const actions = (rule.actions as unknown as RuleAction[]) ?? [];
+    let actionsExecuted = 0;
+
+    for (const action of actions) {
+      try {
+        if (action.type === "wait" && action.delayMs) {
+          await this.sleep(Math.min(action.delayMs, 300_000));
+          actionsExecuted++;
+          continue;
+        }
+        await this.executeAction(tenantId, leadId, action);
+        actionsExecuted++;
+      } catch (err) {
+        this.logger.error(`Action ${action.type} failed for rule "${rule.name}": ${(err as Error).message}`);
+      }
+    }
+
+    await this.prisma.eventLog.create({
+      data: {
+        tenantId,
+        type: EventType.workflow_executed,
+        entity: "Rule",
+        entityId: rule.id,
+        status: "ok",
+        message: `Manual execution: Rule "${rule.name}" ran ${actionsExecuted} action(s) for lead ${leadId}`,
+        payload: { ruleId: rule.id, leadId, actionsCount: actions.length } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    return { actionsExecuted };
   }
 
   /**
@@ -235,7 +286,7 @@ export class RuleEngineService {
     if (userId === "round_robin") {
       // Simple round-robin: find user with fewest assigned leads
       const users = await this.prisma.user.findMany({
-        where: { tenantId, role: { not: "BUSINESS" }, isActive: true },
+        where: { tenantId, role: { in: ["AGENT"] }, isActive: true },
         include: { _count: { select: { assignedLeads: true } } },
         orderBy: { createdAt: "asc" },
       });
@@ -420,9 +471,9 @@ export class RuleEngineService {
       isAiGenerated = true;
       this.logger.debug(`AI response from ${aiResult.provider}/${aiResult.model} for lead ${leadId}`);
     } else {
-      // Fallback to static templates
-      aiMessage = this.generateFollowUpMessage(instruction, lead.name ?? "cliente");
-      this.logger.debug(`AI not available, using static fallback for lead ${leadId}`);
+      // No AI provider configured — skip sending to avoid static spam
+      this.logger.warn(`AI not available for tenant ${tenantId}, skipping send_ai_message for lead ${leadId}`);
+      return;
     }
 
     const msg = await this.prisma.message.create({

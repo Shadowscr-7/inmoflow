@@ -81,14 +81,14 @@ export default function CommissionsPage() {
     try {
       const res = await api.getUsers(token);
       setUsers(Array.isArray(res) ? res : (res as any).data ?? []);
-    } catch { /* ignore */ }
+    } catch { addToast({ type: "error", message: "Error al cargar usuarios" }); }
   }, [token]);
 
   const loadRules = useCallback(async () => {
     if (!token) return;
     try {
       setRules(await api.getCommissionRules(token));
-    } catch { /* ignore */ }
+    } catch { addToast({ type: "error", message: "Error al cargar reglas" }); }
   }, [token]);
 
   useEffect(() => { loadUsers(); loadRules(); }, [loadUsers, loadRules]);
@@ -203,7 +203,7 @@ function CommissionsList({
       const res = await api.getCommissions(token, params);
       setCommissions(res.data);
       setTotal(res.total);
-    } catch { /* ignore */ }
+    } catch { addToast({ type: "error", message: "Error al cargar comisiones" }); }
     setLoading(false);
   }, [token, filterStatus, filterAgent, isManager, currentUserId]);
 
@@ -422,7 +422,7 @@ function CommissionModal({
       setCommissionPct(String(c.commissionPct));
       setAgentPct(String(c.agentPct));
       setNotes(c.notes || "");
-    }).catch(() => {});
+    }).catch(() => addToast({ type: "error", message: "Error al cargar comisión" }));
   }, [editId, token]);
 
   // Calculate preview
@@ -760,6 +760,7 @@ function CommissionSummaryTab({
   users: User[];
   agentName: (id: string) => string;
 }) {
+  const toast = useToast();
   const [summary, setSummary] = useState<CommissionSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -768,7 +769,7 @@ function CommissionSummaryTab({
     setLoading(true);
     try {
       setSummary(await api.getCommissionSummary(token));
-    } catch { /* ignore */ }
+    } catch { toast.error("Error al cargar resumen"); }
     setLoading(false);
   }, [token]);
 

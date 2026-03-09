@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
+import { Prisma } from "@inmoflow/db";
 import { PrismaService } from "../prisma/prisma.service";
 
 function slugify(text: string): string {
@@ -25,7 +26,7 @@ export class PropertiesService {
     limit?: number;
     offset?: number;
   }) {
-    const where: any = { tenantId };
+    const where: Prisma.PropertyWhereInput = { tenantId };
     if (filters?.status) where.status = filters.status;
     if (filters?.zone) where.zone = { contains: filters.zone, mode: "insensitive" };
     if (filters?.propertyType) where.propertyType = filters.propertyType;

@@ -115,6 +115,53 @@ export class AgentPerformanceService {
       const closedDeals = wonLeads + lostLeads;
       const conversionRate = closedDeals > 0 ? Math.round((wonLeads / closedDeals) * 100) : 0;
 
+      // Calculate average response time: time between first IN message and first OUT for each lead
+      let avgResponseTimeMinutes: number | null = null;
+      try {
+        const leadsWithMessages = await this.prisma.lead.findMany({
+          where: { tenantId, assigneeId: agent.id, createdAt: periodFilter },
+          select: { id: true },
+        });
+        if (leadsWithMessages.length > 0) {
+          const responseTimes: number[] = [];
+          // Process in batches of 20 to avoid excessive load
+          for (let b = 0; b < leadsWithMessages.length; b += 20) {
+            const batch = leadsWithMessages.slice(b, b + 20);
+            const pairs = await Promise.all(
+              batch.map(async (lead) => {
+                const [firstIn, firstOut] = await Promise.all([
+                  this.prisma.message.findFirst({
+                    where: { leadId: lead.id, direction: "IN" },
+                    orderBy: { createdAt: "asc" },
+                    select: { createdAt: true },
+                  }),
+                  this.prisma.message.findFirst({
+                    where: { leadId: lead.id, direction: "OUT" },
+                    orderBy: { createdAt: "asc" },
+                    select: { createdAt: true },
+                  }),
+                ]);
+                return { firstIn, firstOut };
+              }),
+            );
+            for (const { firstIn, firstOut } of pairs) {
+              if (firstIn && firstOut && firstOut.createdAt > firstIn.createdAt) {
+                responseTimes.push(
+                  (firstOut.createdAt.getTime() - firstIn.createdAt.getTime()) / 60_000,
+                );
+              }
+            }
+          }
+          if (responseTimes.length > 0) {
+            avgResponseTimeMinutes = Math.round(
+              responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length,
+            );
+          }
+        }
+      } catch {
+        // If response time calculation fails, leave as null
+      }
+
       results.push({
         userId: agent.id,
         name: agent.name,
@@ -130,7 +177,7 @@ export class AgentPerformanceService {
         messagesReceived,
         totalVisits,
         completedVisits,
-        avgResponseTimeMinutes: null, // could be computed from message timestamps
+        avgResponseTimeMinutes,
         goals: goals
           ? {
               leadsTarget: goals.leadsTarget,

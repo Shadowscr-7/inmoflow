@@ -1,12 +1,48 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiProvider } from "@inmoflow/db";
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 
 @Injectable()
 export class AiConfigService {
   private readonly logger = new Logger(AiConfigService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  // ─── Encryption helpers ───────────────────────────
+
+  private getEncryptionKey(): Buffer | null {
+    const hex = process.env.ENCRYPTION_KEY;
+    if (!hex) return null;
+    return Buffer.from(hex, "hex");
+  }
+
+  private encrypt(text: string): string {
+    const key = this.getEncryptionKey();
+    if (!key) return text; // no encryption key → store as-is (dev mode)
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `enc:${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+  }
+
+  private decrypt(text: string): string {
+    if (!text.startsWith("enc:")) return text; // not encrypted (legacy or dev)
+    const key = this.getEncryptionKey();
+    if (!key) {
+      this.logger.warn("ENCRYPTION_KEY not set but encrypted value found — cannot decrypt");
+      return text;
+    }
+    const parts = text.split(":");
+    if (parts.length !== 4) return text;
+    const iv = Buffer.from(parts[1], "hex");
+    const tag = Buffer.from(parts[2], "hex");
+    const encrypted = Buffer.from(parts[3], "hex");
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    return decipher.update(encrypted) + decipher.final("utf8");
+  }
 
   /** Get AI config for tenant (returns null if none) */
   async findByTenant(tenantId: string, userId?: string | null) {
@@ -15,12 +51,13 @@ export class AiConfigService {
       const agentConfig = await this.prisma.aiConfig.findFirst({
         where: { tenantId, userId },
       });
-      if (agentConfig) return agentConfig;
+      if (agentConfig) return { ...agentConfig, apiKey: this.decrypt(agentConfig.apiKey) };
     }
     // Fall back to tenant-wide default (userId = null)
-    return this.prisma.aiConfig.findFirst({
+    const config = await this.prisma.aiConfig.findFirst({
       where: { tenantId, userId: null },
     });
+    return config ? { ...config, apiKey: this.decrypt(config.apiKey) } : null;
   }
 
   /** Get AI config or throw */
@@ -43,7 +80,7 @@ export class AiConfigService {
   }) {
     const data = {
       provider: dto.provider as AiProvider,
-      apiKey: dto.apiKey,
+      apiKey: this.encrypt(dto.apiKey),
       model: dto.model,
       enabled: dto.enabled ?? true,
       systemPrompt: dto.systemPrompt ?? null,
@@ -84,7 +121,7 @@ export class AiConfigService {
 
     const data: Record<string, unknown> = {};
     if (dto.provider !== undefined) data.provider = dto.provider as AiProvider;
-    if (dto.apiKey !== undefined) data.apiKey = dto.apiKey;
+    if (dto.apiKey !== undefined) data.apiKey = this.encrypt(dto.apiKey);
     if (dto.model !== undefined) data.model = dto.model;
     if (dto.enabled !== undefined) data.enabled = dto.enabled;
     if (dto.systemPrompt !== undefined) data.systemPrompt = dto.systemPrompt;

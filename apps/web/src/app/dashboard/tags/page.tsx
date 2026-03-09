@@ -33,7 +33,7 @@ export default function TagsPage() {
     try {
       const res = await api.getTags(token);
       setTags(res);
-    } catch { /* */ }
+    } catch { toast.error("Error al cargar etiquetas"); }
     setLoading(false);
   }, [token]);
 

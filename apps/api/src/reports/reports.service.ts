@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma, LeadStatus } from "@inmoflow/db";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
@@ -15,13 +16,13 @@ export class ReportsService {
     stageId?: string;
     assigneeId?: string;
   }) {
-    const where: any = { tenantId };
+    const where: Prisma.LeadWhereInput = { tenantId };
     if (filters?.from || filters?.to) {
       where.createdAt = {};
       if (filters.from) where.createdAt.gte = new Date(filters.from);
       if (filters.to) where.createdAt.lte = new Date(filters.to);
     }
-    if (filters?.status) where.status = filters.status;
+    if (filters?.status) where.status = filters.status as LeadStatus;
     if (filters?.stageId) where.stageId = filters.stageId;
     if (filters?.assigneeId) where.assigneeId = filters.assigneeId;
 
@@ -59,7 +60,7 @@ export class ReportsService {
    * Build properties export data
    */
   async getPropertiesExport(tenantId: string, filters?: { status?: string }) {
-    const where: any = { tenantId };
+    const where: Prisma.PropertyWhereInput = { tenantId };
     if (filters?.status) where.status = filters.status;
 
     const properties = await this.prisma.property.findMany({

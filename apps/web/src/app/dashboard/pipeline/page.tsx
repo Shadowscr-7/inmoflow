@@ -34,7 +34,7 @@ export default function PipelinePage() {
     try {
       const data = await api.getPipeline(token);
       setPipeline(data);
-    } catch { /* ignore */ }
+    } catch { toast.error("Error al cargar pipeline"); }
     setLoading(false);
   }, [token]);
 

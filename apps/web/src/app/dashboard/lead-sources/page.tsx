@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api, type LeadSource } from "@/lib/api";
+import { api, type LeadSource, API_URL } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Plus, Globe, Pencil, Trash2, Database, Facebook, Unplug, Loader2, ChevronRight, CheckCircle2, Webhook, Copy, RefreshCw, ExternalLink } from "lucide-react";
 import { PageHeader, Modal, EmptyState, Toggle, PageLoader, useToast, useConfirm } from "@/components/ui";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+const API_BASE = `${API_URL}/api`;
 
 const TYPE_OPTIONS: { value: LeadSource["type"]; label: string }[] = [
   { value: "MANUAL", label: "Manual" },

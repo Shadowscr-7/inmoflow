@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { VisitStatus } from "@inmoflow/db";
+import { Prisma, VisitStatus } from "@inmoflow/db";
 
 @Injectable()
 export class VisitsService {
@@ -13,7 +13,7 @@ export class VisitsService {
     status?: VisitStatus;
     leadId?: string;
   }) {
-    const where: any = { tenantId };
+    const where: Prisma.VisitWhereInput = { tenantId };
     if (filters?.from || filters?.to) {
       where.date = {};
       if (filters.from) where.date.gte = new Date(filters.from);

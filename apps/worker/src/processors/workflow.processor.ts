@@ -30,22 +30,31 @@ export class WorkflowProcessor extends WorkerHost {
   }
 
   private async handleWorkflowExecute(data: Record<string, unknown>) {
-    const { tenantId, ruleId, leadId, context } = data;
+    const { tenantId, ruleId, leadId } = data;
     this.logger.log(
       `Manual workflow execute: rule=${ruleId} lead=${leadId}`,
     );
 
-    // For manual execution, we evaluate all rules for the trigger
-    // OR we could execute a specific rule — for now, use rule engine evaluate
-    const result = await this.ruleEngine.evaluate(
-      tenantId as string,
-      "workflow.execute",
-      leadId as string,
-      { ...((context as Record<string, unknown>) ?? {}), ruleId },
-    );
-
-    this.logger.log(
-      `Workflow result: ${result.rulesMatched} rules, ${result.actionsExecuted} actions`,
-    );
+    if (ruleId && leadId) {
+      // Execute a specific rule on a specific lead
+      const result = await this.ruleEngine.executeSingleRule(
+        tenantId as string,
+        ruleId as string,
+        leadId as string,
+      );
+      this.logger.log(`Workflow result: ${result.actionsExecuted} actions executed`);
+    } else if (leadId) {
+      // No specific rule — evaluate all workflow.execute rules for the lead
+      const result = await this.ruleEngine.evaluate(
+        tenantId as string,
+        "workflow.execute",
+        leadId as string,
+      );
+      this.logger.log(
+        `Workflow result: ${result.rulesMatched} rules, ${result.actionsExecuted} actions`,
+      );
+    } else {
+      this.logger.warn("workflow.execute job missing leadId");
+    }
   }
 }

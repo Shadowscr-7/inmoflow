@@ -96,6 +96,7 @@ export class ImportService {
     text: string,
     mapping?: Record<string, string>, // csv_column -> lead_field
     sourceId?: string,
+    dedup?: boolean,
   ): Promise<ImportResult> {
     const allRows = this.parseCSV(text);
     if (allRows.length === 0) throw new BadRequestException("No data rows found");
@@ -105,6 +106,20 @@ export class ImportService {
     const defaultStage = await this.prisma.leadStage.findFirst({
       where: { tenantId, isDefault: true },
     });
+
+    // Pre-load existing phones & emails for dedup
+    let existingPhones = new Set<string>();
+    let existingEmails = new Set<string>();
+    if (dedup !== false) {
+      const existing = await this.prisma.lead.findMany({
+        where: { tenantId },
+        select: { phone: true, email: true },
+      });
+      for (const l of existing) {
+        if (l.phone) existingPhones.add(l.phone.replace(/\D/g, ""));
+        if (l.email) existingEmails.add(l.email.toLowerCase());
+      }
+    }
 
     // Build mapped rows
     const result: ImportResult = { total: allRows.length, created: 0, skipped: 0, errors: [] };
@@ -138,6 +153,19 @@ export class ImportService {
             result.errors.push({ row: rowNum, error: "No name, phone, or email found" });
             result.skipped++;
             continue;
+          }
+
+          // Dedup check
+          if (dedup !== false) {
+            const normalizedPhone = phone?.replace(/\D/g, "") ?? "";
+            const normalizedEmail = email?.toLowerCase() ?? "";
+            if ((normalizedPhone && existingPhones.has(normalizedPhone)) ||
+                (normalizedEmail && existingEmails.has(normalizedEmail))) {
+              result.skipped++;
+              continue;
+            }
+            if (normalizedPhone) existingPhones.add(normalizedPhone);
+            if (normalizedEmail) existingEmails.add(normalizedEmail);
           }
 
           let status: LeadStatus = LeadStatus.NEW;

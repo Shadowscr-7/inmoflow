@@ -17,6 +17,7 @@ import {
   FileText,
 } from "lucide-react";
 import { StatCard, StatCardSkeleton } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
 
 /* ─── Helpers ──────────────────────────────────────── */
 const STATUS_LABELS: Record<string, string> = {
@@ -75,6 +76,7 @@ function timeAgo(dateStr: string): string {
 
 export default function DashboardPage() {
   const { token, user } = useAuth();
+  const toast = useToast();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -83,7 +85,7 @@ export default function DashboardPage() {
     api
       .getDashboardStats(token)
       .then(setStats)
-      .catch(() => {})
+      .catch(() => toast.error("Error al cargar estadísticas"))
       .finally(() => setLoading(false));
   }, [token]);
 

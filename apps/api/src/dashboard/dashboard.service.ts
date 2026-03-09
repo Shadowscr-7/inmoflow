@@ -92,10 +92,11 @@ export class DashboardService {
         orderBy: { createdAt: "desc" },
         take: 8,
       }),
-      // Leads grouped by source type
-      this.prisma.lead.findMany({
+      // Leads grouped by source (efficient aggregation)
+      this.prisma.lead.groupBy({
+        by: ["sourceId"],
         where: { tenantId, sourceId: { not: null } },
-        include: { source: { select: { type: true, name: true } } },
+        _count: { id: true },
       }),
       // Leads created per day in last 30 days
       this.prisma.lead.findMany({
@@ -107,12 +108,26 @@ export class DashboardService {
 
     // ─── Process leadsBySource ────────────────────────
     const sourceMap: Record<string, number> = {};
-    for (const l of leadsBySourceRaw) {
-      const key = l.source?.name ?? "Sin fuente";
-      sourceMap[key] = (sourceMap[key] ?? 0) + 1;
+    let leadsWithSource = 0;
+    if (leadsBySourceRaw.length > 0) {
+      // Resolve source names
+      const sourceIds = leadsBySourceRaw.map((g) => g.sourceId).filter(Boolean) as string[];
+      const sources = sourceIds.length > 0
+        ? await this.prisma.leadSource.findMany({
+            where: { id: { in: sourceIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const sourceNameMap = new Map(sources.map((s) => [s.id, s.name]));
+
+      for (const g of leadsBySourceRaw) {
+        const name = sourceNameMap.get(g.sourceId!) ?? "Sin fuente";
+        sourceMap[name] = (sourceMap[name] ?? 0) + g._count.id;
+        leadsWithSource += g._count.id;
+      }
     }
     // Add "Sin fuente" for leads with no source
-    const leadsNoSource = totalLeads - leadsBySourceRaw.length;
+    const leadsNoSource = totalLeads - leadsWithSource;
     if (leadsNoSource > 0) {
       sourceMap["Sin fuente"] = (sourceMap["Sin fuente"] ?? 0) + leadsNoSource;
     }

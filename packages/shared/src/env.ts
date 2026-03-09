@@ -17,9 +17,11 @@ export const envSchema = z.object({
   EVOLUTION_API_KEY: z.string().optional(),
   EVOLUTION_WEBHOOK_SECRET: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_BOT_USERNAME: z.string().optional(),
   META_VERIFY_TOKEN: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
   META_APP_ID: z.string().optional(),
+  ENCRYPTION_KEY: z.string().optional(),
   PLATFORM_DOMAIN: z.string().default("tuplataforma.com"),
   WEBHOOK_BASE_URL: z.string().url().optional(),
   FRONTEND_URL: z.string().url().optional(),
@@ -34,5 +36,16 @@ export function validateEnv(raw?: Record<string, unknown>): Env {
     console.error(result.error.flatten().fieldErrors);
     throw new Error("Invalid environment variables");
   }
+
+  // Stricter checks for production
+  if (result.data.NODE_ENV === "production") {
+    const missing: string[] = [];
+    if (!result.data.EVOLUTION_WEBHOOK_SECRET) missing.push("EVOLUTION_WEBHOOK_SECRET");
+    if (!result.data.FRONTEND_URL) missing.push("FRONTEND_URL");
+    if (missing.length > 0) {
+      console.warn(`⚠️  Production env vars recommended but missing: ${missing.join(", ")}`);
+    }
+  }
+
   return result.data;
 }
