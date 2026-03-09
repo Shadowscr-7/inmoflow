@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Param, Body, Req, UseGuards, Logger, ForbiddenException, BadGatewayException, InternalServerErrorException } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { Request } from "express";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
@@ -257,6 +258,7 @@ export class WebhooksController {
    * Receives Evolution API webhook events.
    */
   @Post("webhooks/whatsapp")
+  @Throttle({ default: { ttl: 60000, limit: 300 } }) // 300 req/min — provider can burst
   async whatsappWebhook(@Req() req: Request, @Body() body: EvolutionWebhookPayload) {
     // Verify HMAC if EVOLUTION_WEBHOOK_SECRET is configured
     const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET;

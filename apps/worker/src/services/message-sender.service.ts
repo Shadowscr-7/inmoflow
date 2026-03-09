@@ -22,10 +22,20 @@ export class MessageSenderService {
   private readonly tgBotToken: string;
 
   constructor(private readonly prisma: PrismaService) {
-    const raw = process.env.EVOLUTION_API_URL ?? "http://localhost:8080";
-    this.evoBaseUrl = raw.replace(/\/+$/, "");
+    const raw = process.env.EVOLUTION_API_URL ?? "";
+    this.evoBaseUrl = raw.replace(/\/+$/, "") || "http://localhost:8080";
     this.evoApiKey = process.env.EVOLUTION_API_KEY ?? "";
     this.tgBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+
+    if (!process.env.EVOLUTION_API_URL) {
+      this.logger.warn("EVOLUTION_API_URL not set — using http://localhost:8080 fallback");
+    }
+    if (!process.env.EVOLUTION_API_KEY) {
+      this.logger.warn("EVOLUTION_API_KEY not set — WhatsApp sending will fail");
+    }
+    if (!process.env.TELEGRAM_BOT_TOKEN) {
+      this.logger.warn("TELEGRAM_BOT_TOKEN not set — Telegram sending will fail");
+    }
   }
 
   /**

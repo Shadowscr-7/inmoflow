@@ -12,6 +12,8 @@ export class VisitsService {
     agentId?: string;
     status?: VisitStatus;
     leadId?: string;
+    limit?: number;
+    offset?: number;
   }) {
     const where: Prisma.VisitWhereInput = { tenantId };
     if (filters?.from || filters?.to) {
@@ -23,14 +25,24 @@ export class VisitsService {
     if (filters?.status) where.status = filters.status;
     if (filters?.leadId) where.leadId = filters.leadId;
 
-    return this.prisma.visit.findMany({
-      where,
-      orderBy: { date: "asc" },
-      include: {
-        lead: { select: { id: true, name: true, phone: true, email: true } },
-        property: { select: { id: true, title: true, address: true } },
-      },
-    });
+    const take = filters?.limit ?? 100;
+    const skip = filters?.offset ?? 0;
+
+    const [data, total] = await Promise.all([
+      this.prisma.visit.findMany({
+        where,
+        orderBy: { date: "asc" },
+        take,
+        skip,
+        include: {
+          lead: { select: { id: true, name: true, phone: true, email: true } },
+          property: { select: { id: true, title: true, address: true } },
+        },
+      }),
+      this.prisma.visit.count({ where }),
+    ]);
+
+    return { data, total, limit: take, offset: skip };
   }
 
   async findOne(tenantId: string, id: string) {

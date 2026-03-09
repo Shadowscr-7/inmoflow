@@ -80,7 +80,7 @@ export default function CommissionsPage() {
     if (!token) return;
     try {
       const res = await api.getUsers(token);
-      setUsers(Array.isArray(res) ? res : (res as any).data ?? []);
+      setUsers(Array.isArray(res) ? res : ((res as { data?: User[] }).data ?? []));
     } catch { addToast({ type: "error", message: "Error al cargar usuarios" }); }
   }, [token]);
 

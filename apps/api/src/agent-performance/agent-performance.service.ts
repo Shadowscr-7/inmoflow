@@ -42,6 +42,7 @@ export class AgentPerformanceService {
     const monthStart = new Date(`${currentMonth}-01T00:00:00.000Z`);
     const nextM = new Date(monthStart);
     nextM.setMonth(nextM.getMonth() + 1);
+    const periodFilter = { gte: monthStart, lt: nextM };
 
     // Get all agents in this tenant (AGENT + BUSINESS roles)
     const agents = await this.prisma.user.findMany({
@@ -53,69 +54,116 @@ export class AgentPerformanceService {
       select: { id: true, name: true, email: true, role: true },
     });
 
+    if (agents.length === 0) return [];
+    const agentIds = agents.map((a) => a.id);
+
+    // ── Batch queries across ALL agents at once (eliminates N+1) ──
+
+    const [
+      totalLeadsGroup,
+      newLeadsGroup,
+      wonLeadsGroup,
+      lostLeadsGroup,
+      messagesGroup,
+      visitsGroup,
+      goals,
+    ] = await Promise.all([
+      // Total assigned leads per agent (all time)
+      this.prisma.lead.groupBy({
+        by: ["assigneeId"],
+        where: { tenantId, assigneeId: { in: agentIds } },
+        _count: true,
+      }),
+      // New leads this month per agent
+      this.prisma.lead.groupBy({
+        by: ["assigneeId"],
+        where: { tenantId, assigneeId: { in: agentIds }, createdAt: periodFilter },
+        _count: true,
+      }),
+      // Won leads this month per agent
+      this.prisma.lead.groupBy({
+        by: ["assigneeId"],
+        where: { tenantId, assigneeId: { in: agentIds }, status: LeadStatus.WON, updatedAt: periodFilter },
+        _count: true,
+      }),
+      // Lost leads this month per agent
+      this.prisma.lead.groupBy({
+        by: ["assigneeId"],
+        where: { tenantId, assigneeId: { in: agentIds }, status: LeadStatus.LOST, updatedAt: periodFilter },
+        _count: true,
+      }),
+      // Messages by agent + direction this month
+      this.prisma.message.groupBy({
+        by: ["direction"],
+        where: { tenantId, lead: { assigneeId: { in: agentIds } }, createdAt: periodFilter },
+        _count: true,
+      }),
+      // Visits by agent + status this month
+      this.prisma.visit.groupBy({
+        by: ["agentId", "status"],
+        where: { tenantId, agentId: { in: agentIds }, date: periodFilter },
+        _count: true,
+      }),
+      // Goals for all agents
+      this.prisma.agentGoal.findMany({
+        where: { tenantId, userId: { in: agentIds }, month: currentMonth },
+      }),
+    ]);
+
+
+    // For messages per agent, we need to query per agent (Prisma limitation on groupBy through relations)
+    // But we batch them all in parallel instead of sequentially
+    const msgPerAgent = await Promise.all(
+      agentIds.map(async (agentId) => {
+        const [total, sent, received] = await Promise.all([
+          this.prisma.message.count({
+            where: { tenantId, lead: { assigneeId: agentId }, createdAt: periodFilter },
+          }),
+          this.prisma.message.count({
+            where: { tenantId, direction: "OUT", lead: { assigneeId: agentId }, createdAt: periodFilter },
+          }),
+          this.prisma.message.count({
+            where: { tenantId, direction: "IN", lead: { assigneeId: agentId }, createdAt: periodFilter },
+          }),
+        ]);
+        return { agentId, total, sent, received };
+      }),
+    );
+
+    // Build lookup maps
+    const totalLeadsMap = new Map(totalLeadsGroup.map((g) => [g.assigneeId, g._count]));
+    const newLeadsMap = new Map(newLeadsGroup.map((g) => [g.assigneeId, g._count]));
+    const wonLeadsMap = new Map(wonLeadsGroup.map((g) => [g.assigneeId, g._count]));
+    const lostLeadsMap = new Map(lostLeadsGroup.map((g) => [g.assigneeId, g._count]));
+    const msgMap = new Map(msgPerAgent.map((m) => [m.agentId, m]));
+    const goalsMap = new Map(goals.map((g) => [g.userId, g]));
+
+    // Visits per agent
+    const visitsMap = new Map<string, { total: number; completed: number }>();
+    for (const g of visitsGroup) {
+      if (!g.agentId) continue;
+      const entry = visitsMap.get(g.agentId) ?? { total: 0, completed: 0 };
+      entry.total += g._count;
+      if (g.status === "COMPLETED") entry.completed += g._count;
+      visitsMap.set(g.agentId, entry);
+    }
+
+    // Build results for each agent
     const results: AgentMetrics[] = [];
 
     for (const agent of agents) {
-      const periodFilter = { gte: monthStart, lt: nextM };
-
-      const [
-        totalLeads,
-        newLeads,
-        wonLeads,
-        lostLeads,
-        totalMessages,
-        messagesSent,
-        messagesReceived,
-        totalVisits,
-        completedVisits,
-        goals,
-      ] = await Promise.all([
-        // Total assigned leads
-        this.prisma.lead.count({
-          where: { tenantId, assigneeId: agent.id },
-        }),
-        // New leads this month
-        this.prisma.lead.count({
-          where: { tenantId, assigneeId: agent.id, createdAt: periodFilter },
-        }),
-        // Won leads this month
-        this.prisma.lead.count({
-          where: { tenantId, assigneeId: agent.id, status: LeadStatus.WON, updatedAt: periodFilter },
-        }),
-        // Lost leads this month
-        this.prisma.lead.count({
-          where: { tenantId, assigneeId: agent.id, status: LeadStatus.LOST, updatedAt: periodFilter },
-        }),
-        // Total messages for this agent's leads
-        this.prisma.message.count({
-          where: { tenantId, lead: { assigneeId: agent.id }, createdAt: periodFilter },
-        }),
-        // Messages sent (OUT)
-        this.prisma.message.count({
-          where: { tenantId, direction: "OUT", lead: { assigneeId: agent.id }, createdAt: periodFilter },
-        }),
-        // Messages received (IN)
-        this.prisma.message.count({
-          where: { tenantId, direction: "IN", lead: { assigneeId: agent.id }, createdAt: periodFilter },
-        }),
-        // Total visits
-        this.prisma.visit.count({
-          where: { tenantId, agentId: agent.id, date: periodFilter },
-        }),
-        // Completed visits
-        this.prisma.visit.count({
-          where: { tenantId, agentId: agent.id, status: "COMPLETED", date: periodFilter },
-        }),
-        // Goals for this month
-        this.prisma.agentGoal.findUnique({
-          where: { tenantId_userId_month: { tenantId, userId: agent.id, month: currentMonth } },
-        }),
-      ]);
+      const totalLeads = totalLeadsMap.get(agent.id) ?? 0;
+      const newLeads = newLeadsMap.get(agent.id) ?? 0;
+      const wonLeads = wonLeadsMap.get(agent.id) ?? 0;
+      const lostLeads = lostLeadsMap.get(agent.id) ?? 0;
+      const msgs = msgMap.get(agent.id);
+      const visits = visitsMap.get(agent.id);
+      const goal = goalsMap.get(agent.id);
 
       const closedDeals = wonLeads + lostLeads;
       const conversionRate = closedDeals > 0 ? Math.round((wonLeads / closedDeals) * 100) : 0;
 
-      // Calculate average response time: time between first IN message and first OUT for each lead
+      // Calculate average response time (still needs per-lead, but batched)
       let avgResponseTimeMinutes: number | null = null;
       try {
         const leadsWithMessages = await this.prisma.lead.findMany({
@@ -124,7 +172,6 @@ export class AgentPerformanceService {
         });
         if (leadsWithMessages.length > 0) {
           const responseTimes: number[] = [];
-          // Process in batches of 20 to avoid excessive load
           for (let b = 0; b < leadsWithMessages.length; b += 20) {
             const batch = leadsWithMessages.slice(b, b + 20);
             const pairs = await Promise.all(
@@ -172,19 +219,19 @@ export class AgentPerformanceService {
         wonLeads,
         lostLeads,
         conversionRate,
-        totalMessages,
-        messagesSent,
-        messagesReceived,
-        totalVisits,
-        completedVisits,
+        totalMessages: msgs?.total ?? 0,
+        messagesSent: msgs?.sent ?? 0,
+        messagesReceived: msgs?.received ?? 0,
+        totalVisits: visits?.total ?? 0,
+        completedVisits: visits?.completed ?? 0,
         avgResponseTimeMinutes,
-        goals: goals
+        goals: goal
           ? {
-              leadsTarget: goals.leadsTarget,
+              leadsTarget: goal.leadsTarget,
               leadsActual: newLeads,
-              visitsTarget: goals.visitsTarget,
-              visitsActual: totalVisits,
-              wonTarget: goals.wonTarget,
+              visitsTarget: goal.visitsTarget,
+              visitsActual: visits?.total ?? 0,
+              wonTarget: goal.wonTarget,
               wonActual: wonLeads,
             }
           : null,

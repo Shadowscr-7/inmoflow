@@ -9,6 +9,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
 
 const STATUS_OPTIONS = [
   { value: "ACTIVE", label: "Activa", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
@@ -48,6 +49,7 @@ export default function PropertiesPage() {
   const [viewing, setViewing] = useState<Property | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -84,6 +86,17 @@ export default function PropertiesPage() {
 
   const handleSave = async () => {
     if (!token) return;
+
+    // Client-side validation
+    const errors: Record<string, string> = {};
+    if (!form.title || !(form.title as string).trim()) errors.title = "El título es obligatorio";
+    if (form.price && (isNaN(Number(form.price)) || Number(form.price) < 0)) errors.price = "Precio inválido";
+    if (form.bedrooms && (isNaN(Number(form.bedrooms)) || Number(form.bedrooms) < 0)) errors.bedrooms = "Valor inválido";
+    if (form.bathrooms && (isNaN(Number(form.bathrooms)) || Number(form.bathrooms) < 0)) errors.bathrooms = "Valor inválido";
+    if (form.areaM2 && (isNaN(Number(form.areaM2)) || Number(form.areaM2) < 0)) errors.areaM2 = "Valor inválido";
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     setSaving(true);
     try {
       const data = {
@@ -102,8 +115,8 @@ export default function PropertiesPage() {
       }
       setShowModal(false);
       load();
-    } catch (e: any) {
-      toast.error(e.message ?? "Error");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e));
     }
     setSaving(false);
   };
@@ -115,7 +128,7 @@ export default function PropertiesPage() {
       await api.deleteProperty(token, p.id);
       toast.success("Propiedad eliminada");
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
   };
 
   return (
@@ -270,7 +283,8 @@ export default function PropertiesPage() {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Título *</label>
                   <input value={String(form.title ?? "")} onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white ${formErrors.title ? "border-red-500" : ""}`} />
+                  {formErrors.title && <p className="text-xs text-red-500 mt-1">{formErrors.title}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>

@@ -19,8 +19,14 @@ export class VisitsController {
     @Query("agentId") agentId?: string,
     @Query("status") status?: VisitStatus,
     @Query("leadId") leadId?: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
   ) {
-    return this.visitsService.findAll(tenantId, { from, to, agentId, status, leadId });
+    return this.visitsService.findAll(tenantId, {
+      from, to, agentId, status, leadId,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
   }
 
   @Get("stats")

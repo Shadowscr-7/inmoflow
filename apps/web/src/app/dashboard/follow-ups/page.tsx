@@ -9,6 +9,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
 
 const TRIGGER_OPTIONS = [
   { value: "manual", label: "Manual" },
@@ -92,7 +93,7 @@ export default function FollowUpsPage() {
 
   const updateStep = (idx: number, field: keyof StepForm, value: string | number) => {
     const updated = [...steps];
-    (updated[idx] as any)[field] = value;
+    updated[idx] = { ...updated[idx], [field]: value };
     setSteps(updated);
   };
 
@@ -120,7 +121,7 @@ export default function FollowUpsPage() {
       }
       setShowModal(false);
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
     setSaving(false);
   };
 
@@ -131,7 +132,7 @@ export default function FollowUpsPage() {
       await api.deleteSequence(token, s.id);
       toast.success("Secuencia eliminada");
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
   };
 
   const toggleEnabled = async (s: FollowUpSequence) => {

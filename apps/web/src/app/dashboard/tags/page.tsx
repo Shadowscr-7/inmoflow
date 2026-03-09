@@ -7,6 +7,11 @@ import { TagIcon, Plus, X, Edit2, Trash2, Users } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
+
+interface TagWithCount extends Tag {
+  _count?: { leads: number };
+}
 
 const COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f97316",
@@ -66,7 +71,7 @@ export default function TagsPage() {
       }
       setShowModal(false);
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
     setSaving(false);
   };
 
@@ -77,7 +82,7 @@ export default function TagsPage() {
       await api.deleteTag(token, t.id);
       toast.success("Tag eliminado");
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
   };
 
   return (
@@ -110,7 +115,7 @@ export default function TagsPage() {
                   <h3 className="font-medium text-gray-900 dark:text-white truncate">{t.name}</h3>
                   <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                     <Users className="h-3 w-3" />
-                    <span>{(t as any)._count?.leads ?? 0} leads</span>
+                    <span>{(t as TagWithCount)._count?.leads ?? 0} leads</span>
                   </div>
                 </div>
               </div>

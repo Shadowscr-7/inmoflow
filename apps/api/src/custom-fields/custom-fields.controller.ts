@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, HttpCode, HttpStatus,
+  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus,
 } from "@nestjs/common";
 import { CustomFieldsService } from "./custom-fields.service";
 import { CreateCustomFieldDto, UpdateCustomFieldDto, SetFieldValuesDto } from "./dto";
@@ -14,8 +14,15 @@ export class CustomFieldsController {
   // ─── Definitions CRUD ────────────────────────────
 
   @Get()
-  findAll(@TenantId() tenantId: string) {
-    return this.service.findAllDefinitions(tenantId);
+  findAll(
+    @TenantId() tenantId: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    return this.service.findAllDefinitions(tenantId, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
   }
 
   @Post()

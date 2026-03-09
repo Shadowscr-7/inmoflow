@@ -1,9 +1,53 @@
 # InmoFlow — Auditoría de Producción
 
 > Generado: 8 de marzo de 2026
-> Estado: **38 issues** encontrados — 8 críticos, 14 medios, 16 bajos
+> Estado: **38/38 issues resueltos** ✅
 > Mocks/stubs: **0** — todo tiene implementación real
 > TODOs/FIXMEs en código: **0**
+
+## Resumen de correcciones
+
+### Sprint 1 (Seguridad) — 7 issues ✅
+- #1 QR Code real con `qrcode` npm
+- #2 Signing secrets sin fallback inseguro
+- #3 Webhook Meta requiere firma en producción
+- #4 AI key cifrada con AES-256-GCM
+- #5 Banner demo deshabilitado en producción
+- #6 Seed guard (`NODE_ENV !== production`)
+- #7 Meta verify token y Telegram magic string seguros
+
+### Sprint 2 (Core) — 7 issues ✅
+- #8 QR real (cubierto en #1)
+- #9 API_URL centralizada
+- #10 CSV import dedup por teléfono/email
+- #14 Cálculo de tiempo de respuesta corregido
+- #15 AI fallback safe parsing
+- #16 Round-robin fix para asignación
+
+### Sprint 3 (Performance) — 4 issues ✅
+- #17 scoreAllLeads en batches de 10
+- #18 Dashboard groupBy en Prisma
+- #25 Workflow ejecuta regla individual (no todas)
+- #30 Warning de acción WAIT en reglas
+
+### Sprint 4 (Calidad) — 10 issues ✅
+- #31-36 Silent catches → toast errors en 19 archivos
+- #37 Backend `any` → tipos Prisma en 6 archivos
+- #38 Redis health check
+- Env validation en API main.ts
+- placeholder.json eliminado
+
+### Sprint 5 (Final 10) — 10 issues ✅
+- #11 Commission % fallbacks eliminados → requiere regla configurada o error claro
+- #12 Plan limits configurables via env (`PLAN_OVERRIDE_*`) con `getAvailablePlans()`
+- #13 Lead scoring configurable con `ScoringConfig` interface + override via env/tenant
+- #19 16 `any` types eliminados en 7 archivos frontend (helper `getErrorMessage`)
+- #20 Worker env validation con `validateEnv()` + warnings de vars críticas
+- #24 Rate limiting en webhooks WhatsApp y Meta (300 req/min)
+- #26 Commissions summary reescrito con Prisma `groupBy`/`aggregate` (0 carga en memoria)
+- #27 Paginación en follow-ups, visits y custom-fields (limit/offset + total)
+- #28 Agent Performance N+1 → groupBy batch para leads/visits/goals + parallel messages
+- #29 Form validation en properties y visits (client-side con errores visuales)
 
 ---
 

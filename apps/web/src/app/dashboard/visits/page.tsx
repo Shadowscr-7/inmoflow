@@ -9,6 +9,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
 
 const STATUS_COLORS: Record<string, string> = {
   SCHEDULED: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
@@ -61,6 +62,7 @@ export default function VisitsPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<{ today: number; thisWeek: number } | null>(null);
 
   const weekDays = getWeekDays(currentWeek);
@@ -115,6 +117,16 @@ export default function VisitsPage() {
   };
 
   const handleSave = async () => {
+    // Client-side validation
+    const errors: Record<string, string> = {};
+    if (!form.leadId) errors.leadId = "Seleccioná un lead";
+    if (!form.date) errors.date = "La fecha es obligatoria";
+    if (form.endDate && form.date && new Date(form.endDate as string) <= new Date(form.date as string)) {
+      errors.endDate = "La fecha fin debe ser posterior a la fecha inicio";
+    }
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     if (!token || !form.leadId || !form.date) return;
     setSaving(true);
     try {
@@ -130,7 +142,7 @@ export default function VisitsPage() {
       }
       setShowModal(false);
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
     setSaving(false);
   };
 
@@ -141,7 +153,7 @@ export default function VisitsPage() {
       await api.deleteVisit(token, v.id);
       toast.success("Visita eliminada");
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
   };
 
   const navigateWeek = (delta: number) => {
@@ -237,10 +249,11 @@ export default function VisitsPage() {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Lead *</label>
                   <select value={String(form.leadId ?? "")} onChange={(e) => setForm({ ...form, leadId: e.target.value })}
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                    className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white ${formErrors.leadId ? "border-red-500" : ""}`}>
                     <option value="">— Seleccionar lead —</option>
                     {leads.map((l) => <option key={l.id} value={l.id}>{l.name ?? l.phone ?? l.email ?? l.id}</option>)}
                   </select>
+                  {formErrors.leadId && <p className="text-xs text-red-500 mt-1">{formErrors.leadId}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Propiedad (opcional)</label>
@@ -254,7 +267,8 @@ export default function VisitsPage() {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Fecha y hora *</label>
                     <input type="datetime-local" value={String(form.date ?? "")} onChange={(e) => setForm({ ...form, date: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                      className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white ${formErrors.date ? "border-red-500" : ""}`} />
+                    {formErrors.date && <p className="text-xs text-red-500 mt-1">{formErrors.date}</p>}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Fin (opcional)</label>

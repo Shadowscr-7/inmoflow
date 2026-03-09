@@ -7,6 +7,7 @@ import { Settings2, Plus, X, Edit2, Trash2, GripVertical, Type, Hash, Calendar, 
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
 
 const FIELD_TYPES = [
   { value: "TEXT", label: "Texto", icon: Type, description: "Campo de texto libre" },
@@ -65,7 +66,7 @@ export default function CustomFieldsPage() {
     if (!token || !name.trim()) return;
     setSaving(true);
     try {
-      const data: any = { name: name.trim(), fieldType, required };
+      const data: { name: string; fieldType: string; required: boolean; options?: string[] } = { name: name.trim(), fieldType, required };
       if (fieldType === "SELECT") {
         data.options = options.split(",").map((o: string) => o.trim()).filter(Boolean);
       }
@@ -78,7 +79,7 @@ export default function CustomFieldsPage() {
       }
       setShowModal(false);
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
     setSaving(false);
   };
 
@@ -89,7 +90,7 @@ export default function CustomFieldsPage() {
       await api.deleteCustomField(token, f.id);
       toast.success("Campo eliminado");
       load();
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
   };
 
   const getTypeInfo = (type: string) => FIELD_TYPES.find((t) => t.value === type) ?? FIELD_TYPES[0];

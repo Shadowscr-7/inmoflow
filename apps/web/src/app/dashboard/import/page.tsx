@@ -6,6 +6,7 @@ import { useState, useRef } from "react";
 import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, ArrowRight, X, Download } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
 
 type Step = "upload" | "preview" | "result";
 
@@ -69,8 +70,8 @@ export default function ImportPage() {
       });
       setMapping(map);
       setStep("preview");
-    } catch (e: any) {
-      toast.error(e.message ?? "Error al procesar CSV");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e));
     }
     setLoading(false);
   };
@@ -83,8 +84,8 @@ export default function ImportPage() {
       setResult(res);
       setStep("result");
       toast.success(`${res.created} leads importados`);
-    } catch (e: any) {
-      toast.error(e.message ?? "Error al importar");
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e));
     }
     setLoading(false);
   };

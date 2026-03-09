@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { LeadTemperature } from "@inmoflow/db";
 
@@ -6,21 +6,76 @@ import { LeadTemperature } from "@inmoflow/db";
  * Lead Scoring — calculates a 0-100 score for each lead
  * based on activity signals, then assigns a temperature label.
  *
- * Scoring factors (weights sum to 100):
- *  - hasEmail          → 5
- *  - hasPhone          → 5
- *  - messagesCount     → up to 20  (cap at 20 msgs)
- *  - messagesInbound   → up to 10  (lead initiated)
- *  - visitCount        → up to 15  (cap at 5 visits)
- *  - statusProgression → up to 15
- *  - recency           → up to 15  (last activity within days)
- *  - hasProfile        → 5
- *  - hasIntent         → 5
- *  - tagCount          → up to 5
+ * Weights are defined in DEFAULT_SCORING_CONFIG and can be overridden
+ * per-tenant by storing a JSON object in the `scoringConfig` field
+ * of the Tenant model (or via SCORING_CONFIG env var).
  */
+
+export interface ScoringConfig {
+  emailPoints: number;
+  phonePoints: number;
+  messagesCap: number;       // max pts for messages (1pt per msg up to cap)
+  inboundCap: number;        // max inbound msg pts
+  visitPoints: number;       // pts per visit
+  visitsCap: number;         // max visits counted
+  statusScores: Record<string, number>;
+  recencyBrackets: { days: number; points: number }[];
+  profilePoints: number;
+  intentPoints: number;
+  tagsCap: number;
+  hotThreshold: number;      // score >= this → HOT
+  warmThreshold: number;     // score >= this → WARM
+}
+
+export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
+  emailPoints: 5,
+  phonePoints: 5,
+  messagesCap: 20,
+  inboundCap: 10,
+  visitPoints: 3,
+  visitsCap: 5,
+  statusScores: {
+    NEW: 0, CONTACTED: 3, QUALIFIED: 7, VISIT: 10, NEGOTIATION: 13, WON: 15, LOST: 2,
+  },
+  recencyBrackets: [
+    { days: 1, points: 15 },
+    { days: 3, points: 12 },
+    { days: 7, points: 8 },
+    { days: 14, points: 4 },
+    { days: 30, points: 2 },
+  ],
+  profilePoints: 5,
+  intentPoints: 5,
+  tagsCap: 5,
+  hotThreshold: 60,
+  warmThreshold: 30,
+};
 @Injectable()
 export class LeadScoringService {
+  private readonly logger = new Logger(LeadScoringService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Load scoring config — uses DEFAULT, can be overridden per-tenant in future */
+  private async getConfig(_tenantId: string): Promise<ScoringConfig> {
+    // Future: load from tenant settings table or tenant.scoringConfig JSON
+    // const tenant = await this.prisma.tenant.findUnique({
+    //   where: { id: tenantId },
+    //   select: { scoringConfig: true },
+    // });
+    // if (tenant?.scoringConfig) return { ...DEFAULT_SCORING_CONFIG, ...tenant.scoringConfig };
+
+    // Allow global override via env
+    const envOverride = process.env.SCORING_CONFIG;
+    if (envOverride) {
+      try {
+        return { ...DEFAULT_SCORING_CONFIG, ...JSON.parse(envOverride) };
+      } catch {
+        this.logger.warn("SCORING_CONFIG env is invalid JSON, using defaults");
+      }
+    }
+    return DEFAULT_SCORING_CONFIG;
+  }
 
   /** Recalculate score for a single lead */
   async scoreLead(leadId: string, tenantId: string) {
@@ -45,62 +100,55 @@ export class LeadScoringService {
 
     if (!lead) return null;
 
+    const cfg = await this.getConfig(tenantId);
     let score = 0;
 
     // Contact info
-    if (lead.email) score += 5;
-    if (lead.phone) score += 5;
+    if (lead.email) score += cfg.emailPoints;
+    if (lead.phone) score += cfg.phonePoints;
 
-    // Messages volume (up to 20 pts, cap at 20 msgs)
+    // Messages volume
     const msgCount = lead._count.messages;
-    score += Math.min(msgCount, 20);
+    score += Math.min(msgCount, cfg.messagesCap);
 
-    // Inbound messages (up to 10 pts)
+    // Inbound messages
     const inboundCount = lead.messages.filter((m) => m.direction === "IN").length;
-    score += Math.min(inboundCount, 10);
+    score += Math.min(inboundCount, cfg.inboundCap);
 
-    // Visits (up to 15 pts, 3 pts per visit, cap 5)
-    score += Math.min(lead._count.visits, 5) * 3;
+    // Visits
+    score += Math.min(lead._count.visits, cfg.visitsCap) * cfg.visitPoints;
 
-    // Status progression (max 15 pts)
-    const STATUS_SCORE: Record<string, number> = {
-      NEW: 0,
-      CONTACTED: 3,
-      QUALIFIED: 7,
-      VISIT: 10,
-      NEGOTIATION: 13,
-      WON: 15,
-      LOST: 2,
-    };
-    score += STATUS_SCORE[lead.status] ?? 0;
+    // Status progression
+    score += cfg.statusScores[lead.status] ?? 0;
 
-    // Recency: how recently the lead had activity (max 15 pts)
+    // Recency: how recently the lead had activity
     const lastMsgDate = lead.messages[0]?.createdAt;
     if (lastMsgDate) {
       const daysSince = (Date.now() - new Date(lastMsgDate).getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSince < 1) score += 15;
-      else if (daysSince < 3) score += 12;
-      else if (daysSince < 7) score += 8;
-      else if (daysSince < 14) score += 4;
-      else if (daysSince < 30) score += 2;
+      for (const bracket of cfg.recencyBrackets) {
+        if (daysSince < bracket.days) {
+          score += bracket.points;
+          break;
+        }
+      }
     }
 
     // Has profile filled
-    if (lead.profile) score += 5;
+    if (lead.profile) score += cfg.profilePoints;
 
     // Has intent
-    if (lead.intent) score += 5;
+    if (lead.intent) score += cfg.intentPoints;
 
-    // Tags (up to 5 pts)
-    score += Math.min(lead._count.tags, 5);
+    // Tags
+    score += Math.min(lead._count.tags, cfg.tagsCap);
 
     // Clamp to 0-100
     score = Math.max(0, Math.min(100, score));
 
     // Determine temperature
     let temperature: LeadTemperature;
-    if (score >= 60) temperature = LeadTemperature.HOT;
-    else if (score >= 30) temperature = LeadTemperature.WARM;
+    if (score >= cfg.hotThreshold) temperature = LeadTemperature.HOT;
+    else if (score >= cfg.warmThreshold) temperature = LeadTemperature.WARM;
     else temperature = LeadTemperature.COLD;
 
     // Update lead
@@ -148,53 +196,51 @@ export class LeadScoringService {
 
     if (!lead) return null;
 
+    const cfg = await this.getConfig(tenantId);
     const factors: { factor: string; points: number; maxPoints: number; detail: string }[] = [];
 
     factors.push({
       factor: "email",
-      points: lead.email ? 5 : 0,
-      maxPoints: 5,
+      points: lead.email ? cfg.emailPoints : 0,
+      maxPoints: cfg.emailPoints,
       detail: lead.email ? "Email proporcionado" : "Sin email",
     });
 
     factors.push({
       factor: "phone",
-      points: lead.phone ? 5 : 0,
-      maxPoints: 5,
+      points: lead.phone ? cfg.phonePoints : 0,
+      maxPoints: cfg.phonePoints,
       detail: lead.phone ? "Teléfono proporcionado" : "Sin teléfono",
     });
 
-    const msgPts = Math.min(lead._count.messages, 20);
+    const msgPts = Math.min(lead._count.messages, cfg.messagesCap);
     factors.push({
       factor: "messages",
       points: msgPts,
-      maxPoints: 20,
+      maxPoints: cfg.messagesCap,
       detail: `${lead._count.messages} mensajes totales`,
     });
 
     const inbound = lead.messages.filter((m) => m.direction === "IN").length;
     factors.push({
       factor: "inbound",
-      points: Math.min(inbound, 10),
-      maxPoints: 10,
+      points: Math.min(inbound, cfg.inboundCap),
+      maxPoints: cfg.inboundCap,
       detail: `${inbound} mensajes entrantes`,
     });
 
-    const visitPts = Math.min(lead._count.visits, 5) * 3;
+    const visitPts = Math.min(lead._count.visits, cfg.visitsCap) * cfg.visitPoints;
     factors.push({
       factor: "visits",
       points: visitPts,
-      maxPoints: 15,
+      maxPoints: cfg.visitsCap * cfg.visitPoints,
       detail: `${lead._count.visits} visitas programadas`,
     });
 
-    const STATUS_SCORE: Record<string, number> = {
-      NEW: 0, CONTACTED: 3, QUALIFIED: 7, VISIT: 10, NEGOTIATION: 13, WON: 15, LOST: 2,
-    };
     factors.push({
       factor: "status",
-      points: STATUS_SCORE[lead.status] ?? 0,
-      maxPoints: 15,
+      points: cfg.statusScores[lead.status] ?? 0,
+      maxPoints: Math.max(...Object.values(cfg.statusScores)),
       detail: `Estado: ${lead.status}`,
     });
 
@@ -203,32 +249,38 @@ export class LeadScoringService {
     let recencyDetail = "Sin actividad reciente";
     if (lastMsg) {
       const days = (Date.now() - new Date(lastMsg).getTime()) / (1000 * 60 * 60 * 24);
-      if (days < 1) { recencyPts = 15; recencyDetail = "Actividad hoy"; }
-      else if (days < 3) { recencyPts = 12; recencyDetail = "Actividad hace < 3 días"; }
-      else if (days < 7) { recencyPts = 8; recencyDetail = "Actividad esta semana"; }
-      else if (days < 14) { recencyPts = 4; recencyDetail = "Actividad hace < 2 semanas"; }
-      else if (days < 30) { recencyPts = 2; recencyDetail = "Actividad hace < 1 mes"; }
+      for (const bracket of cfg.recencyBrackets) {
+        if (days < bracket.days) {
+          recencyPts = bracket.points;
+          recencyDetail = days < 1 ? "Actividad hoy" :
+            days < 3 ? "Actividad hace < 3 días" :
+            days < 7 ? "Actividad esta semana" :
+            days < 14 ? "Actividad hace < 2 semanas" :
+            "Actividad hace < 1 mes";
+          break;
+        }
+      }
     }
-    factors.push({ factor: "recency", points: recencyPts, maxPoints: 15, detail: recencyDetail });
+    factors.push({ factor: "recency", points: recencyPts, maxPoints: cfg.recencyBrackets[0]?.points ?? 15, detail: recencyDetail });
 
     factors.push({
       factor: "profile",
-      points: lead.profile ? 5 : 0,
-      maxPoints: 5,
+      points: lead.profile ? cfg.profilePoints : 0,
+      maxPoints: cfg.profilePoints,
       detail: lead.profile ? "Perfil completado" : "Sin perfil",
     });
 
     factors.push({
       factor: "intent",
-      points: lead.intent ? 5 : 0,
-      maxPoints: 5,
+      points: lead.intent ? cfg.intentPoints : 0,
+      maxPoints: cfg.intentPoints,
       detail: lead.intent ? `Intención: ${lead.intent}` : "Sin intención definida",
     });
 
     factors.push({
       factor: "tags",
-      points: Math.min(lead._count.tags, 5),
-      maxPoints: 5,
+      points: Math.min(lead._count.tags, cfg.tagsCap),
+      maxPoints: cfg.tagsCap,
       detail: `${lead._count.tags} etiquetas`,
     });
 
@@ -236,7 +288,7 @@ export class LeadScoringService {
 
     return {
       score: Math.min(100, total),
-      temperature: total >= 60 ? "HOT" : total >= 30 ? "WARM" : "COLD",
+      temperature: total >= cfg.hotThreshold ? "HOT" : total >= cfg.warmThreshold ? "WARM" : "COLD",
       factors,
     };
   }

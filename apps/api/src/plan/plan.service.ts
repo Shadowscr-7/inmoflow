@@ -11,32 +11,60 @@ export interface PlanLimits {
   metaLeads: boolean;
 }
 
-const PLAN_CONFIG: Record<Plan, PlanLimits> = {
-  [Plan.STARTER]: {
-    maxUsers: 3,
-    maxRules: 5,
-    maxChannels: 2,
-    allowedChannels: ["WHATSAPP", "WEB"],
-    aiEnabled: false,
-    metaLeads: false,
-  },
-  [Plan.PROFESSIONAL]: {
-    maxUsers: 10,
-    maxRules: -1,
-    maxChannels: -1,
-    allowedChannels: ["ALL"],
-    aiEnabled: true,
-    metaLeads: true,
-  },
-  [Plan.CUSTOM]: {
-    maxUsers: -1,
-    maxRules: -1,
-    maxChannels: -1,
-    allowedChannels: ["ALL"],
-    aiEnabled: true,
-    metaLeads: true,
-  },
-};
+/**
+ * Plan configuration — defined in-code for simplicity.
+ * For multi-tenant SaaS with custom pricing, move these limits to a `plan_config`
+ * table per tenant, or use JSON overrides on the Tenant model.
+ *
+ * To override limits for a specific plan via environment (JSON):
+ *   PLAN_OVERRIDE_STARTER='{"maxUsers":5,"maxRules":10}'
+ */
+function loadPlanConfig(): Record<Plan, PlanLimits> {
+  const base: Record<Plan, PlanLimits> = {
+    [Plan.STARTER]: {
+      maxUsers: 3,
+      maxRules: 5,
+      maxChannels: 2,
+      allowedChannels: ["WHATSAPP", "WEB"],
+      aiEnabled: false,
+      metaLeads: false,
+    },
+    [Plan.PROFESSIONAL]: {
+      maxUsers: 10,
+      maxRules: -1,
+      maxChannels: -1,
+      allowedChannels: ["ALL"],
+      aiEnabled: true,
+      metaLeads: true,
+    },
+    [Plan.CUSTOM]: {
+      maxUsers: -1,
+      maxRules: -1,
+      maxChannels: -1,
+      allowedChannels: ["ALL"],
+      aiEnabled: true,
+      metaLeads: true,
+    },
+  };
+
+  // Allow env-based overrides per plan
+  for (const plan of Object.values(Plan)) {
+    const envKey = `PLAN_OVERRIDE_${plan}`;
+    const raw = process.env[envKey];
+    if (raw) {
+      try {
+        const overrides = JSON.parse(raw);
+        base[plan] = { ...base[plan], ...overrides };
+      } catch {
+        // ignore malformed JSON
+      }
+    }
+  }
+
+  return base;
+}
+
+const PLAN_CONFIG = loadPlanConfig();
 
 const PLAN_LABELS: Record<Plan, string> = {
   [Plan.STARTER]: "Starter",
@@ -53,6 +81,15 @@ export class PlanService {
   /** Get limits for a given plan */
   getLimits(plan: Plan): PlanLimits {
     return PLAN_CONFIG[plan] ?? PLAN_CONFIG[Plan.STARTER];
+  }
+
+  /** Get all available plans with their limits (for comparison UI) */
+  getAvailablePlans(): { plan: Plan; label: string; limits: PlanLimits }[] {
+    return Object.values(Plan).map((plan) => ({
+      plan,
+      label: PLAN_LABELS[plan],
+      limits: this.getLimits(plan),
+    }));
   }
 
   /** Get the tenant's current plan */

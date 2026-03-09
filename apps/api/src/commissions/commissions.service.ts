@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
 import { Prisma, CommissionStatus, OperationType } from "@inmoflow/db";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class CommissionsService {
+  private readonly logger = new Logger(CommissionsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ─── Commission Rules (per operation type) ────────
@@ -122,8 +124,16 @@ export class CommissionsService {
       }
     }
 
-    commPct = commPct ?? 3; // fallback 3%
-    agentPct = agentPct ?? 50; // fallback 50/50
+    if (commPct === undefined || agentPct === undefined) {
+      this.logger.warn(
+        `No commission rule found for tenant=${tenantId} op=${data.operationType}. ` +
+        `Configure rules in Settings → Commissions.`,
+      );
+      throw new BadRequestException(
+        `No hay regla de comisión configurada para operación "${data.operationType}". ` +
+        `Configurá las reglas en Ajustes → Comisiones, o indicá los porcentajes manualmente.`,
+      );
+    }
 
     const commissionTotal = Math.round(data.dealAmount * commPct / 100);
     const agentAmount = Math.round(commissionTotal * agentPct / 100);
@@ -161,7 +171,7 @@ export class CommissionsService {
     const existing = await this.prisma.commission.findFirst({ where: { id, tenantId } });
     if (!existing) throw new NotFoundException("Commission not found");
 
-    const updateData: any = {};
+    const updateData: Prisma.CommissionUpdateInput = {};
     if (data.status) {
       updateData.status = data.status;
       if (data.status === "PAID") updateData.paidAt = new Date();
@@ -206,52 +216,76 @@ export class CommissionsService {
       if (filters.to) where.createdAt.lte = new Date(filters.to);
     }
 
-    const all = await this.prisma.commission.findMany({ where });
-
-    const byStatus = { PENDING: 0, APPROVED: 0, PAID: 0, CANCELLED: 0 };
-    let totalCommission = 0;
-    let totalAgentAmount = 0;
-    let totalBizAmount = 0;
-    let totalDeals = 0;
-    const byAgent: Record<string, { deals: number; commission: number; agentAmount: number; status: Record<string, number> }> = {};
-    const byOperation: Record<string, { deals: number; commission: number }> = {};
-
-    for (const c of all) {
-      if (c.status !== "CANCELLED") {
-        totalCommission += c.commissionTotal;
-        totalAgentAmount += c.agentAmount;
-        totalBizAmount += c.bizAmount;
-      }
-      totalDeals++;
-
-      byStatus[c.status as keyof typeof byStatus] = (byStatus[c.status as keyof typeof byStatus] || 0) + 1;
-
-      // By agent
-      if (!byAgent[c.agentId]) {
-        byAgent[c.agentId] = { deals: 0, commission: 0, agentAmount: 0, status: {} };
-      }
-      byAgent[c.agentId].deals++;
-      if (c.status !== "CANCELLED") {
-        byAgent[c.agentId].commission += c.commissionTotal;
-        byAgent[c.agentId].agentAmount += c.agentAmount;
-      }
-      byAgent[c.agentId].status[c.status] = (byAgent[c.agentId].status[c.status] || 0) + 1;
-
+    // Use Prisma aggregate + groupBy instead of loading all records into memory
+    const [totals, statusGroups, agentGroups, operationGroups] = await Promise.all([
+      // Overall totals (excluding CANCELLED)
+      this.prisma.commission.aggregate({
+        where: { ...where, status: { not: "CANCELLED" } },
+        _sum: { commissionTotal: true, agentAmount: true, bizAmount: true },
+        _count: true,
+      }),
+      // Count by status
+      this.prisma.commission.groupBy({
+        by: ["status"],
+        where,
+        _count: true,
+      }),
+      // By agent: deals, commission, agentAmount, status breakdown
+      this.prisma.commission.groupBy({
+        by: ["agentId", "status"],
+        where,
+        _sum: { commissionTotal: true, agentAmount: true },
+        _count: true,
+      }),
       // By operation type
-      if (!byOperation[c.operationType]) {
-        byOperation[c.operationType] = { deals: 0, commission: 0 };
+      this.prisma.commission.groupBy({
+        by: ["operationType", "status"],
+        where,
+        _sum: { commissionTotal: true },
+        _count: true,
+      }),
+    ]);
+
+    // Total deals count (all statuses)
+    const totalDeals = statusGroups.reduce((s, g) => s + g._count, 0);
+
+    // By status map
+    const byStatus: Record<string, number> = { PENDING: 0, APPROVED: 0, PAID: 0, CANCELLED: 0 };
+    for (const g of statusGroups) {
+      byStatus[g.status] = g._count;
+    }
+
+    // By agent map
+    const byAgent: Record<string, { deals: number; commission: number; agentAmount: number; status: Record<string, number> }> = {};
+    for (const g of agentGroups) {
+      if (!byAgent[g.agentId]) {
+        byAgent[g.agentId] = { deals: 0, commission: 0, agentAmount: 0, status: {} };
       }
-      byOperation[c.operationType].deals++;
-      if (c.status !== "CANCELLED") {
-        byOperation[c.operationType].commission += c.commissionTotal;
+      byAgent[g.agentId].deals += g._count;
+      if (g.status !== "CANCELLED") {
+        byAgent[g.agentId].commission += g._sum.commissionTotal ?? 0;
+        byAgent[g.agentId].agentAmount += g._sum.agentAmount ?? 0;
+      }
+      byAgent[g.agentId].status[g.status] = g._count;
+    }
+
+    // By operation type map
+    const byOperation: Record<string, { deals: number; commission: number }> = {};
+    for (const g of operationGroups) {
+      if (!byOperation[g.operationType]) {
+        byOperation[g.operationType] = { deals: 0, commission: 0 };
+      }
+      byOperation[g.operationType].deals += g._count;
+      if (g.status !== "CANCELLED") {
+        byOperation[g.operationType].commission += g._sum.commissionTotal ?? 0;
       }
     }
 
     return {
       totalDeals,
-      totalCommission,
-      totalAgentAmount,
-      totalBizAmount,
+      totalCommission: totals._sum.commissionTotal ?? 0,
+      totalAgentAmount: totals._sum.agentAmount ?? 0,
+      totalBizAmount: totals._sum.bizAmount ?? 0,
       byStatus,
       byAgent,
       byOperation,

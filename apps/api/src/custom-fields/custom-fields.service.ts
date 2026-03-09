@@ -8,11 +8,21 @@ export class CustomFieldsService {
 
   // ─── Definitions ─────────────────────────────────
 
-  async findAllDefinitions(tenantId: string) {
-    return this.prisma.customFieldDefinition.findMany({
-      where: { tenantId },
-      orderBy: { order: "asc" },
-    });
+  async findAllDefinitions(tenantId: string, filters?: { limit?: number; offset?: number }) {
+    const take = filters?.limit ?? 100;
+    const skip = filters?.offset ?? 0;
+
+    const [data, total] = await Promise.all([
+      this.prisma.customFieldDefinition.findMany({
+        where: { tenantId },
+        orderBy: { order: "asc" },
+        take,
+        skip,
+      }),
+      this.prisma.customFieldDefinition.count({ where: { tenantId } }),
+    ]);
+
+    return { data, total, limit: take, offset: skip };
   }
 
   async createDefinition(tenantId: string, dto: {

@@ -5,15 +5,25 @@ import { PrismaService } from "../prisma/prisma.service";
 export class FollowUpsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(tenantId: string) {
-    return this.prisma.followUpSequence.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        steps: { orderBy: { order: "asc" } },
-        _count: { select: { runs: true } },
-      },
-    });
+  async findAll(tenantId: string, filters?: { limit?: number; offset?: number }) {
+    const take = filters?.limit ?? 50;
+    const skip = filters?.offset ?? 0;
+
+    const [data, total] = await Promise.all([
+      this.prisma.followUpSequence.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+        include: {
+          steps: { orderBy: { order: "asc" } },
+          _count: { select: { runs: true } },
+        },
+      }),
+      this.prisma.followUpSequence.count({ where: { tenantId } }),
+    ]);
+
+    return { data, total, limit: take, offset: skip };
   }
 
   async findOne(tenantId: string, id: string) {

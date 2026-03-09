@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, Query, Req, Logger, ForbiddenException } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { Request } from "express";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
@@ -88,6 +89,7 @@ export class MetaWebhookController {
    * }
    */
   @Post()
+  @Throttle({ default: { ttl: 60000, limit: 300 } }) // 300 req/min — Meta can send bursts
   async receive(@Req() req: Request, @Body() body: MetaWebhookPayload) {
     // Verify HMAC signature
     if (!this.verifySignature(req)) {
