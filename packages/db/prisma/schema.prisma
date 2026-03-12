@@ -183,6 +183,8 @@ model User {
   googleCalendarRefreshToken String?
   /// Whether Google Calendar sync is enabled for this agent
   googleCalendarEnabled      Boolean @default(false)
+  /// Unique token for ICS calendar feed (public URL)
+  calendarToken              String?  @unique
 
   @@unique([tenantId, email])
   @@index([tenantId, role])

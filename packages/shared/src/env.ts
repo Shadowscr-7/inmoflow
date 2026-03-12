@@ -25,6 +25,8 @@ export const envSchema = z.object({
   PLATFORM_DOMAIN: z.string().default("tuplataforma.com"),
   WEBHOOK_BASE_URL: z.string().url().optional(),
   FRONTEND_URL: z.string().url().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

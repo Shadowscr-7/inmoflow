@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { GoogleCalendarService } from "../calendar/google-calendar.service";
 import { Prisma, VisitStatus } from "@inmoflow/db";
 
 @Injectable()
 export class VisitsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(VisitsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly googleCalendar: GoogleCalendarService,
+  ) {}
 
   async findAll(tenantId: string, filters?: {
     from?: string;
@@ -70,7 +76,7 @@ export class VisitsService {
     const lead = await this.prisma.lead.findFirst({ where: { id: dto.leadId, tenantId } });
     if (!lead) throw new NotFoundException("Lead not found");
 
-    return this.prisma.visit.create({
+    const visit = await this.prisma.visit.create({
       data: {
         tenantId,
         leadId: dto.leadId,
@@ -86,6 +92,15 @@ export class VisitsService {
         property: { select: { id: true, title: true, address: true } },
       },
     });
+
+    // Sync to Google Calendar (async, non-blocking)
+    if (visit.agentId) {
+      this.syncCreateToGoogle(visit).catch((e) =>
+        this.logger.warn(`Google Calendar sync failed: ${e}`),
+      );
+    }
+
+    return visit;
   }
 
   async update(tenantId: string, id: string, dto: {
@@ -100,7 +115,7 @@ export class VisitsService {
     const visit = await this.prisma.visit.findFirst({ where: { id, tenantId } });
     if (!visit) throw new NotFoundException("Visit not found");
 
-    return this.prisma.visit.update({
+    const updated = await this.prisma.visit.update({
       where: { id },
       data: {
         ...dto,
@@ -112,12 +127,72 @@ export class VisitsService {
         property: { select: { id: true, title: true, address: true } },
       },
     });
+
+    // Sync update to Google Calendar
+    if (updated.agentId && updated.googleEventId) {
+      this.googleCalendar
+        .updateEvent(updated.agentId, updated.googleEventId, {
+          date: updated.date,
+          endDate: updated.endDate,
+          address: updated.address,
+          notes: updated.notes,
+          leadName: updated.lead?.name,
+          propertyTitle: updated.property?.title,
+          status: updated.status,
+        })
+        .catch((e) => this.logger.warn(`Google Calendar update sync failed: ${e}`));
+    }
+
+    return updated;
   }
 
   async remove(tenantId: string, id: string) {
     const visit = await this.prisma.visit.findFirst({ where: { id, tenantId } });
     if (!visit) throw new NotFoundException("Visit not found");
+
+    // Delete from Google Calendar first
+    if (visit.agentId && visit.googleEventId) {
+      this.googleCalendar
+        .deleteEvent(visit.agentId, visit.googleEventId)
+        .catch((e) => this.logger.warn(`Google Calendar delete sync failed: ${e}`));
+    }
+
     await this.prisma.visit.delete({ where: { id } });
+  }
+
+  // ─── Google Calendar Sync Helper ─────────────────────
+
+  private async syncCreateToGoogle(visit: {
+    id: string;
+    agentId: string | null;
+    date: Date;
+    endDate: Date | null;
+    address: string | null;
+    notes: string | null;
+    createdByAi: boolean;
+    lead?: { name: string | null } | null;
+    property?: { title: string | null } | null;
+  }) {
+    if (!visit.agentId) return;
+
+    const eventId = await this.googleCalendar.createEvent(visit.agentId, {
+      id: visit.id,
+      date: visit.date,
+      endDate: visit.endDate,
+      address: visit.address,
+      notes: visit.notes,
+      leadName: visit.lead?.name,
+      propertyTitle: visit.property?.title,
+      createdByAi: visit.createdByAi,
+    });
+
+    // Store the Google event ID on the visit
+    if (eventId) {
+      await this.prisma.visit.update({
+        where: { id: visit.id },
+        data: { googleEventId: eventId },
+      });
+    }
   }
 
   // Stats for dashboard

@@ -31,6 +31,7 @@ import { PublicModule } from "./public/public.module";
 import { AgentPerformanceModule } from "./agent-performance/agent-performance.module";
 import { CommissionsModule } from "./commissions/commissions.module";
 import { QueuedActionsModule } from "./queued-actions/queued-actions.module";
+import { CalendarModule } from "./calendar/calendar.module";
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { QueuedActionsModule } from "./queued-actions/queued-actions.module";
     AgentPerformanceModule,
     CommissionsModule,
     QueuedActionsModule,
+    CalendarModule,
     HealthModule,
   ],
   providers: [

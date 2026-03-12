@@ -1092,6 +1092,29 @@ export const api = {
     );
   },
 
+  // ─── Calendar Sync (ICS + Google) ────────────────
+  getCalendarToken(token: string) {
+    return apiFetch<{ token: string | null }>("/calendar/token", { token });
+  },
+  generateCalendarToken(token: string) {
+    return apiFetch<{ token: string }>("/calendar/token", { token, method: "POST" });
+  },
+  revokeCalendarToken(token: string) {
+    return apiFetch<{ ok: boolean }>("/calendar/token", { token, method: "DELETE" });
+  },
+  getGoogleAuthUrl(token: string) {
+    return apiFetch<{ url: string }>("/calendar/google/auth-url", { token });
+  },
+  connectGoogleCalendar(token: string, code: string) {
+    return apiFetch<{ ok: boolean }>(`/calendar/google/callback?code=${encodeURIComponent(code)}`, { token });
+  },
+  getGoogleCalendarStatus(token: string) {
+    return apiFetch<{ connected: boolean }>("/calendar/google/status", { token });
+  },
+  disconnectGoogleCalendar(token: string) {
+    return apiFetch<{ ok: boolean }>("/calendar/google", { token, method: "DELETE" });
+  },
+
   // ─── Follow-Up Sequences ─────────────────────────
   getSequences(token: string) {
     return apiFetch<FollowUpSequence[]>("/follow-ups", { token });
