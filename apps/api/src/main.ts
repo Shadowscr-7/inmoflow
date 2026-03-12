@@ -1,5 +1,6 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
+import { json, urlencoded } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter";
@@ -11,6 +12,10 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
   const port = env.API_PORT;
+
+  // Increase body parser limit for CSV import (2 MB)
+  app.use(json({ limit: "3mb" }));
+  app.use(urlencoded({ extended: true, limit: "3mb" }));
 
   // Security headers
   app.use(helmet());

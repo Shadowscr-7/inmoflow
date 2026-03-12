@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { EncryptionService } from "../common/encryption.service";
 
 /**
  * MeliService — Handles MercadoLibre OAuth2 and API communication.
@@ -22,7 +23,10 @@ export class MeliService {
     return !!(this.clientId && this.clientSecret && this.redirectUri);
   }
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly encryption: EncryptionService,
+  ) {}
 
   // ─── OAuth2 ──────────────────────────────────────────
 
@@ -79,8 +83,8 @@ export class MeliService {
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
-        meliAccessToken: tokens.access_token,
-        meliRefreshToken: tokens.refresh_token,
+        meliAccessToken: this.encryption.encrypt(tokens.access_token),
+        meliRefreshToken: this.encryption.encrypt(tokens.refresh_token),
         meliUserId: String(tokens.user_id),
         meliEnabled: true,
       },
@@ -131,6 +135,8 @@ export class MeliService {
 
     if (!tenant?.meliEnabled || !tenant?.meliRefreshToken) return null;
 
+    const decryptedRefresh = this.encryption.decrypt(tenant.meliRefreshToken);
+
     // Try the existing token first — if it returns 401 we'll refresh
     // MeLi tokens last 6 hours, so we always try refresh
     const res = await fetch(`${this.API_BASE}/oauth/token`, {
@@ -140,7 +146,7 @@ export class MeliService {
         grant_type: "refresh_token",
         client_id: this.clientId!,
         client_secret: this.clientSecret!,
-        refresh_token: tenant.meliRefreshToken,
+        refresh_token: decryptedRefresh,
       }),
     });
 
@@ -158,8 +164,8 @@ export class MeliService {
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
-        meliAccessToken: data.access_token,
-        meliRefreshToken: data.refresh_token,
+        meliAccessToken: this.encryption.encrypt(data.access_token),
+        meliRefreshToken: this.encryption.encrypt(data.refresh_token),
       },
     });
 

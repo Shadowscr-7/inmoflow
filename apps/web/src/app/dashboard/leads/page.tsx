@@ -14,11 +14,18 @@ export default function LeadsPage() {
   const [total, setTotal] = useState(0);
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const limit = 25;
+
+  // Debounce search input 300ms
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(0); }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const loadLeads = useCallback(async () => {
     if (!token) return;
@@ -27,7 +34,7 @@ export default function LeadsPage() {
       limit: String(limit),
       offset: String(page * limit),
     };
-    if (search) params.search = search;
+    if (debouncedSearch) params.search = debouncedSearch;
     if (statusFilter) params.status = statusFilter;
 
     try {
@@ -38,7 +45,7 @@ export default function LeadsPage() {
       toast.error("Error al cargar leads");
     }
     setLoading(false);
-  }, [token, search, statusFilter, page]);
+  }, [token, debouncedSearch, statusFilter, page]);
 
   useEffect(() => { loadLeads(); }, [loadLeads]);
 
@@ -70,7 +77,7 @@ export default function LeadsPage() {
             type="text"
             placeholder="Buscar por nombre, teléfono o email..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => setSearch(e.target.value)}
             className="input pl-10"
           />
         </div>

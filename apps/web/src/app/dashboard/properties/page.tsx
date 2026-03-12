@@ -44,7 +44,14 @@ export default function PropertiesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+
+  // Debounce search input 300ms
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Property | null>(null);
   const [viewing, setViewing] = useState<Property | null>(null);
@@ -60,14 +67,14 @@ export default function PropertiesPage() {
     setLoading(true);
     try {
       const params: Record<string, string> = {};
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (statusFilter) params.status = statusFilter;
       const res = await api.getProperties(token, params);
       setProperties(res.data);
       setTotal(res.total);
     } catch { toast.error("Error al cargar propiedades"); }
     setLoading(false);
-  }, [token, search, statusFilter]);
+  }, [token, debouncedSearch, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 

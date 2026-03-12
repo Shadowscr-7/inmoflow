@@ -49,7 +49,7 @@ export class PropertiesService {
       this.prisma.property.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        take: filters?.limit ?? 50,
+        take: Math.min(filters?.limit ?? 50, 200),
         skip: filters?.offset ?? 0,
         include: {
           media: { orderBy: { order: "asc" }, take: 5 },
@@ -124,19 +124,22 @@ export class PropertiesService {
     price?: number;
     currency?: string;
     propertyType?: string;
+    operationType?: string;
     bedrooms?: number;
     bathrooms?: number;
     areaM2?: number;
+    floors?: number;
     hasGarage?: boolean;
     zone?: string;
     address?: string;
+    amenities?: string;
     lat?: number;
     lng?: number;
   }) {
     const property = await this.prisma.property.findFirst({ where: { id, tenantId } });
     if (!property) throw new NotFoundException("Property not found");
 
-    const data: any = { ...dto };
+    const data: Record<string, unknown> = { ...dto };
     if (dto.title && dto.title !== property.title) {
       let slug = slugify(dto.title);
       const existing = await this.prisma.property.findUnique({

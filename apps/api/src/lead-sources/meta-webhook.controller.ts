@@ -47,7 +47,9 @@ export class MetaWebhookController {
     if (!signature) return false;
     const body = JSON.stringify(req.body);
     const expected = "sha256=" + crypto.createHmac("sha256", this.appSecret).update(body).digest("hex");
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    return sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
   }
 
   /**

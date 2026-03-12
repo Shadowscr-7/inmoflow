@@ -13,12 +13,16 @@ import { JwtAuthGuard, TenantGuard, RolesGuard, Roles } from "../auth/guards";
 import { TenantId } from "../auth/decorators";
 import { QueuedActionsService } from "./queued-actions.service";
 
+import { UserRole } from "@inmoflow/db";
+
 @Controller("queued-actions")
 @UseGuards(JwtAuthGuard, TenantGuard)
 export class QueuedActionsController {
   constructor(private readonly service: QueuedActionsService) {}
 
   @Get()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   findAll(
     @TenantId() tenantId: string,
     @Query("status") status?: string,
@@ -28,6 +32,8 @@ export class QueuedActionsController {
   }
 
   @Get("count")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   async count(@TenantId() tenantId: string) {
     const pending = await this.service.countPending(tenantId);
     return { pending };

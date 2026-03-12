@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { EncryptionService } from "../common/encryption.service";
 
 /**
  * GoogleCalendarService — Handles OAuth2 flow and bidirectional sync
@@ -16,7 +17,10 @@ export class GoogleCalendarService {
   private readonly clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   private readonly SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly encryption: EncryptionService,
+  ) {}
 
   private get isConfigured(): boolean {
     return !!(this.clientId && this.clientSecret);
@@ -90,7 +94,7 @@ export class GoogleCalendarService {
     await this.prisma.user.update({
       where: { id: userId },
       data: {
-        googleCalendarRefreshToken: tokens.refresh_token,
+        googleCalendarRefreshToken: this.encryption.encrypt(tokens.refresh_token),
         googleCalendarEnabled: true,
       },
     });
@@ -132,13 +136,15 @@ export class GoogleCalendarService {
       return null;
     }
 
+    const decryptedToken = this.encryption.decrypt(user.googleCalendarRefreshToken);
+
     const res = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         client_id: this.clientId!,
         client_secret: this.clientSecret!,
-        refresh_token: user.googleCalendarRefreshToken,
+        refresh_token: decryptedToken,
         grant_type: "refresh_token",
       }),
     });

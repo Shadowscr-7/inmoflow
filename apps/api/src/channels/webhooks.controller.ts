@@ -269,7 +269,9 @@ export class WebhooksController {
         throw new ForbiddenException("Missing signature");
       }
       const expected = crypto.createHmac("sha256", webhookSecret).update(JSON.stringify(body)).digest("hex");
-      if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
         this.logger.warn("WA webhook signature mismatch");
         throw new ForbiddenException("Invalid signature");
       }

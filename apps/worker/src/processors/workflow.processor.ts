@@ -24,9 +24,23 @@ export class WorkflowProcessor extends WorkerHost {
       case "workflow.execute":
         await this.handleWorkflowExecute(job.data);
         break;
+      case "workflow.continue-actions":
+        await this.handleContinueActions(job.data);
+        break;
       default:
         this.logger.warn(`Unknown job name: ${job.name}`);
     }
+  }
+
+  private async handleContinueActions(data: Record<string, unknown>) {
+    const { tenantId, ruleId, leadId, ruleName, actions } = data as {
+      tenantId: string; ruleId: string; leadId: string; ruleName: string; actions: unknown[];
+    };
+    this.logger.log(`Continuing deferred actions: rule="${ruleName}" lead=${leadId} (${(actions ?? []).length} actions)`);
+    const executed = await this.ruleEngine.executeActionSequence(
+      tenantId, leadId, ruleId, ruleName, actions as never[],
+    );
+    this.logger.log(`Deferred execution result: ${executed} actions executed`);
   }
 
   private async handleWorkflowExecute(data: Record<string, unknown>) {

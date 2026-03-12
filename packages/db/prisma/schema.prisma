@@ -63,6 +63,7 @@ enum MessageChannel {
 enum EventType {
   lead_created
   lead_updated
+  lead_deleted
   lead_assigned
   lead_contacted
   message_inbound

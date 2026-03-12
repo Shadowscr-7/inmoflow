@@ -244,6 +244,7 @@ export class LeadsService {
       }
     }
 
+    // Tenant isolation: `existing` was fetched with tenantId filter above
     const updated = await this.prisma.lead.update({
       where: { id: leadId },
       data,
@@ -287,11 +288,12 @@ export class LeadsService {
     });
     if (!existing) throw new NotFoundException("Lead not found");
 
+    // Tenant isolation: `existing` was verified with tenantId filter above
     await this.prisma.lead.delete({ where: { id: leadId } });
 
     await this.eventLog.log({
       tenantId,
-      type: EventType.lead_updated,
+      type: EventType.lead_deleted,
       entity: "lead",
       entityId: leadId,
       message: `Lead deleted: ${existing.name ?? existing.phone ?? existing.email ?? leadId}`,

@@ -1,7 +1,7 @@
 import { Controller, Get, Query, UseGuards } from "@nestjs/common";
 import { EventLogService } from "./event-log.service";
-import { JwtAuthGuard, TenantGuard, TenantId } from "../auth";
-import { EventType } from "@inmoflow/db";
+import { JwtAuthGuard, TenantGuard, RolesGuard, Roles, TenantId } from "../auth";
+import { EventType, UserRole } from "@inmoflow/db";
 
 @Controller("event-logs")
 @UseGuards(JwtAuthGuard, TenantGuard)
@@ -9,6 +9,8 @@ export class EventLogController {
   constructor(private readonly eventLogService: EventLogService) {}
 
   @Get()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   async list(
     @TenantId() tenantId: string,
     @Query("entity") entity?: string,

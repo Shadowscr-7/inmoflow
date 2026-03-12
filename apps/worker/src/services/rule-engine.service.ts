@@ -1,4 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
 import { EventType, Prisma, MessageChannel, LeadStatus } from "@inmoflow/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiAgentService } from "./ai-agent.service";
@@ -36,6 +38,7 @@ export class RuleEngineService {
     private readonly prisma: PrismaService,
     private readonly aiAgent: AiAgentService,
     private readonly messageSender: MessageSenderService,
+    @InjectQueue("workflow") private readonly workflowQueue: Queue,
   ) {}
 
   /**
@@ -152,19 +155,22 @@ export class RuleEngineService {
 
       const actions = (rule.actions as unknown as RuleAction[]) ?? [];
 
-      for (const action of actions) {
+      for (let i = 0; i < actions.length; i++) {
+        const action = actions[i];
         try {
-          // Handle wait/delay actions
+          // Handle wait/delay actions — defer remaining actions as delayed BullMQ job
           if (action.type === "wait" && action.delayMs) {
-            const MAX_IN_PROCESS_WAIT = 300_000; // 5 minutes max
-            if (action.delayMs > MAX_IN_PROCESS_WAIT) {
-              this.logger.warn(`Wait action ${action.delayMs}ms exceeds max ${MAX_IN_PROCESS_WAIT}ms — capping. Use scheduled jobs for longer delays.`);
+            const remaining = actions.slice(i + 1);
+            if (remaining.length > 0) {
+              await this.workflowQueue.add(
+                "workflow.continue-actions",
+                { tenantId, leadId, ruleId: rule.id, ruleName: rule.name, actions: remaining },
+                { delay: Math.min(action.delayMs, 86_400_000) }, // cap at 24h
+              );
+              this.logger.debug(`Deferred ${remaining.length} action(s) by ${action.delayMs}ms for rule "${rule.name}"`);
             }
-            const waitMs = Math.min(action.delayMs, MAX_IN_PROCESS_WAIT);
-            this.logger.debug(`Waiting ${waitMs}ms before next action`);
-            await this.sleep(waitMs);
             actionsExecuted++;
-            continue;
+            break; // stop processing this rule's actions — remainder is deferred
           }
 
           await this.executeAction(tenantId, leadId, action);
@@ -227,12 +233,21 @@ export class RuleEngineService {
     const actions = (rule.actions as unknown as RuleAction[]) ?? [];
     let actionsExecuted = 0;
 
-    for (const action of actions) {
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
       try {
         if (action.type === "wait" && action.delayMs) {
-          await this.sleep(Math.min(action.delayMs, 300_000));
+          const remaining = actions.slice(i + 1);
+          if (remaining.length > 0) {
+            await this.workflowQueue.add(
+              "workflow.continue-actions",
+              { tenantId, ruleId, leadId, ruleName: rule.name, actions: remaining },
+              { delay: Math.min(action.delayMs, 86_400_000) },
+            );
+            this.logger.debug(`Deferred ${remaining.length} action(s) by ${action.delayMs}ms for rule "${rule.name}"`);
+          }
           actionsExecuted++;
-          continue;
+          break;
         }
         await this.executeAction(tenantId, leadId, action);
         actionsExecuted++;
@@ -946,8 +961,41 @@ export class RuleEngineService {
     return (h || 0) * 60 + (m || 0);
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  /**
+   * Execute a sequence of deferred actions (called by WorkflowProcessor after a delayed job fires).
+   * Handles nested waits by re-deferring remaining actions.
+   */
+  async executeActionSequence(
+    tenantId: string,
+    leadId: string,
+    ruleId: string,
+    ruleName: string,
+    actions: RuleAction[],
+  ): Promise<number> {
+    let executed = 0;
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      try {
+        if (action.type === "wait" && action.delayMs) {
+          const remaining = actions.slice(i + 1);
+          if (remaining.length > 0) {
+            await this.workflowQueue.add(
+              "workflow.continue-actions",
+              { tenantId, leadId, ruleId, ruleName, actions: remaining },
+              { delay: Math.min(action.delayMs, 86_400_000) },
+            );
+            this.logger.debug(`Re-deferred ${remaining.length} action(s) by ${action.delayMs}ms for rule "${ruleName}"`);
+          }
+          executed++;
+          break;
+        }
+        await this.executeAction(tenantId, leadId, action);
+        executed++;
+      } catch (err) {
+        this.logger.error(`Deferred action ${action.type} failed for rule "${ruleName}": ${(err as Error).message}`);
+      }
+    }
+    return executed;
   }
 }
 

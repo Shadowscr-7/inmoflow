@@ -1,47 +1,25 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiProvider } from "@inmoflow/db";
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { EncryptionService } from "../common/encryption.service";
 
 @Injectable()
 export class AiConfigService {
   private readonly logger = new Logger(AiConfigService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly encryption: EncryptionService,
+  ) {}
 
-  // ─── Encryption helpers ───────────────────────────
-
-  private getEncryptionKey(): Buffer | null {
-    const hex = process.env.ENCRYPTION_KEY;
-    if (!hex) return null;
-    return Buffer.from(hex, "hex");
-  }
+  // ─── Encryption helpers (delegates to shared EncryptionService) ───
 
   private encrypt(text: string): string {
-    const key = this.getEncryptionKey();
-    if (!key) return text; // no encryption key → store as-is (dev mode)
-    const iv = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", key, iv);
-    const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return `enc:${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+    return this.encryption.encrypt(text);
   }
 
   private decrypt(text: string): string {
-    if (!text.startsWith("enc:")) return text; // not encrypted (legacy or dev)
-    const key = this.getEncryptionKey();
-    if (!key) {
-      this.logger.warn("ENCRYPTION_KEY not set but encrypted value found — cannot decrypt");
-      return text;
-    }
-    const parts = text.split(":");
-    if (parts.length !== 4) return text;
-    const iv = Buffer.from(parts[1], "hex");
-    const tag = Buffer.from(parts[2], "hex");
-    const encrypted = Buffer.from(parts[3], "hex");
-    const decipher = createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(tag);
-    return decipher.update(encrypted) + decipher.final("utf8");
+    return this.encryption.decrypt(text);
   }
 
   /** Get AI config for tenant (returns null if none) */

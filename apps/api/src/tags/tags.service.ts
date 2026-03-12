@@ -9,6 +9,7 @@ export class TagsService {
     return this.prisma.tag.findMany({
       where: { tenantId },
       orderBy: { name: "asc" },
+      take: 500,
       include: { _count: { select: { leads: true } } },
     });
   }

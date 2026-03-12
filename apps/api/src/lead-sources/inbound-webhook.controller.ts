@@ -8,6 +8,7 @@ import {
   BadRequestException,
   HttpCode,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventLogService } from "../event-log/event-log.service";
 import { EventProducerService } from "../events/event-producer.service";
@@ -47,6 +48,7 @@ export class InboundWebhookController {
 
   @Post(":apiKey")
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 30 } }) // 30 leads/min per IP
   async receive(
     @Param("apiKey") apiKey: string,
     @Body() body: InboundLeadPayload | InboundLeadPayload[],

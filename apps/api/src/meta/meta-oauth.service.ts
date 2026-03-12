@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, InternalServerErrorException }
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventLogService } from "../event-log/event-log.service";
+import { EncryptionService } from "../common/encryption.service";
 import { LeadSourceType, EventType } from "@inmoflow/db";
 
 const GRAPH_API = "https://graph.facebook.com/v19.0";
@@ -31,6 +32,7 @@ export class MetaOAuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventLog: EventLogService,
+    private readonly encryption: EncryptionService,
   ) {
     this.appId = process.env.META_APP_ID ?? "";
     this.appSecret = process.env.META_APP_SECRET ?? "";
@@ -131,10 +133,10 @@ export class MetaOAuthService {
 
     const longLivedToken = longLivedRes.access_token ?? tokenRes.access_token;
 
-    // Store on tenant
+    // Store on tenant (encrypted)
     const tenant = await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: { metaUserAccessToken: longLivedToken },
+      data: { metaUserAccessToken: this.encryption.encrypt(longLivedToken) },
     });
 
     this.logger.log(`Meta OAuth completed for tenant ${tenantId.slice(0, 8)}`);
@@ -154,10 +156,11 @@ export class MetaOAuthService {
 
   async listPages(tenantId: string): Promise<MetaPage[]> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    const token = tenant?.metaUserAccessToken;
-    if (!token) {
+    const rawToken = tenant?.metaUserAccessToken;
+    if (!rawToken) {
       throw new BadRequestException("No hay token de Meta. Conectá tu cuenta primero.");
     }
+    const token = this.encryption.decrypt(rawToken);
 
     const res = await this.graphFetch<{ data: MetaPage[] }>("/me/accounts", {
       access_token: token,
@@ -177,8 +180,8 @@ export class MetaOAuthService {
 
   async listForms(tenantId: string, pageId: string): Promise<MetaForm[]> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    const token = tenant?.metaUserAccessToken;
-    if (!token) {
+    const rawToken = tenant?.metaUserAccessToken;
+    if (!rawToken) {
       throw new BadRequestException("No hay token de Meta. Conectá tu cuenta primero.");
     }
 
@@ -218,8 +221,8 @@ export class MetaOAuthService {
     },
   ) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    const token = tenant?.metaUserAccessToken;
-    if (!token) {
+    const rawToken = tenant?.metaUserAccessToken;
+    if (!rawToken) {
       throw new BadRequestException("No hay token de Meta. Conectá tu cuenta primero.");
     }
 
@@ -317,8 +320,9 @@ export class MetaOAuthService {
     // Optionally validate token is still alive
     if (hasToken) {
       try {
+        const token = this.encryption.decrypt(tenant!.metaUserAccessToken!);
         const res = await this.graphFetch<{ id: string; name: string }>("/me", {
-          access_token: tenant!.metaUserAccessToken!,
+          access_token: token,
           fields: "id,name",
         });
         return { connected: true, metaUserId: res.id, metaUserName: res.name };

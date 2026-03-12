@@ -10,9 +10,9 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { LeadSourcesService } from "./lead-sources.service";
-import { JwtAuthGuard, TenantGuard } from "../auth/guards";
+import { JwtAuthGuard, TenantGuard, RolesGuard, Roles } from "../auth/guards";
 import { TenantId } from "../auth/decorators";
-import { LeadSourceType } from "@inmoflow/db";
+import { LeadSourceType, UserRole } from "@inmoflow/db";
 import { CreateLeadSourceDto, UpdateLeadSourceDto } from "./dto";
 
 @Controller("lead-sources")
@@ -34,6 +34,8 @@ export class LeadSourcesController {
   }
 
   @Post()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   create(
     @TenantId() tenantId: string,
     @Body() body: CreateLeadSourceDto,
@@ -42,6 +44,8 @@ export class LeadSourcesController {
   }
 
   @Patch(":id")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   update(
     @TenantId() tenantId: string,
     @Param("id") id: string,
@@ -51,11 +55,15 @@ export class LeadSourcesController {
   }
 
   @Delete(":id")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   delete(@TenantId() tenantId: string, @Param("id") id: string) {
     return this.leadSourcesService.delete(tenantId, id);
   }
 
   @Post(":id/regenerate-key")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   regenerateApiKey(@TenantId() tenantId: string, @Param("id") id: string) {
     return this.leadSourcesService.regenerateApiKey(tenantId, id);
   }

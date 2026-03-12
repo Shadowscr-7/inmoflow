@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiProvider } from "@inmoflow/db";
+import { createDecipheriv } from "crypto";
 
 export interface AiChatMessage {
   role: "system" | "user" | "assistant";
@@ -41,6 +42,30 @@ export class AiAgentService {
   };
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Decrypt AES-256-GCM encrypted values (format: enc:iv:tag:ciphertext) */
+  private decryptValue(text: string): string {
+    if (!text || !text.startsWith("enc:")) return text;
+    const hex = process.env.ENCRYPTION_KEY;
+    if (!hex) {
+      this.logger.warn("ENCRYPTION_KEY not set but encrypted value found — cannot decrypt");
+      return text;
+    }
+    try {
+      const key = Buffer.from(hex, "hex");
+      const parts = text.split(":");
+      if (parts.length !== 4) return text;
+      const iv = Buffer.from(parts[1], "hex");
+      const tag = Buffer.from(parts[2], "hex");
+      const encrypted = Buffer.from(parts[3], "hex");
+      const decipher = createDecipheriv("aes-256-gcm", key, iv);
+      decipher.setAuthTag(tag);
+      return decipher.update(encrypted) + decipher.final("utf8");
+    } catch (err) {
+      this.logger.error(`Decryption failed: ${(err as Error).message}`);
+      return text;
+    }
+  }
 
   /**
    * Check if tenant has a configured and enabled AI agent.
@@ -240,7 +265,7 @@ export class AiAgentService {
     try {
       const result = await this.chat(messages, {
         provider: config.provider,
-        apiKey: config.apiKey,
+        apiKey: this.decryptValue(config.apiKey),
         model: config.model,
         temperature: config.temperature,
         maxTokens: config.maxTokens,
@@ -324,8 +349,15 @@ export class AiAgentService {
     if (systemInstruction) body.systemInstruction = { parts: [{ text: systemInstruction }] };
 
     const res = await fetch(
-      `${this.endpoints.GEMINI}/models/${opts.model}:generateContent?key=${opts.apiKey}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      `${this.endpoints.GEMINI}/models/${opts.model}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": opts.apiKey,
+        },
+        body: JSON.stringify(body),
+      },
     );
 
     if (!res.ok) {
