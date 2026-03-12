@@ -26,6 +26,8 @@ export interface UpdateLeadDto {
   intent?: string;
   score?: number;
   notes?: string;
+  aiConversationActive?: boolean;
+  aiInstruction?: string;
 }
 
 export interface LeadFilters {
@@ -193,6 +195,14 @@ export class LeadsService {
     if (dto.intent !== undefined) { data.intent = dto.intent; changes.intent = dto.intent; }
     if (dto.score !== undefined) { data.score = dto.score; changes.score = dto.score; }
     if (dto.notes !== undefined) { data.notes = dto.notes; changes.notes = dto.notes; }
+    if (dto.aiConversationActive !== undefined) {
+      data.aiConversationActive = dto.aiConversationActive;
+      changes.aiConversationActive = dto.aiConversationActive;
+    }
+    if (dto.aiInstruction !== undefined) {
+      data.aiInstruction = dto.aiInstruction;
+      changes.aiInstruction = dto.aiInstruction;
+    }
     if (dto.assigneeId !== undefined) {
       data.assignee = dto.assigneeId
         ? { connect: { id: dto.assigneeId } }

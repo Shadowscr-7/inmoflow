@@ -11,6 +11,21 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 
+export class WorkingHoursScheduleDto {
+  @IsNumber() day!: number; // 0=Sunday ... 6=Saturday
+  @IsString() from!: string; // "HH:mm"
+  @IsString() to!: string;   // "HH:mm"
+}
+
+export class WorkingHoursDto {
+  @IsBoolean() enabled!: boolean;
+  @IsString() timezone!: string; // e.g. "America/Argentina/Buenos_Aires"
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WorkingHoursScheduleDto)
+  schedule!: WorkingHoursScheduleDto[];
+}
+
 const VALID_ACTION_TYPES = [
   "assign",
   "send_template",
@@ -63,6 +78,11 @@ export class CreateRuleDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
   /** If true and user is BUSINESS/ADMIN, creates a global (tenant-wide) rule */
   @IsOptional() @IsBoolean() global?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WorkingHoursDto)
+  workingHours?: WorkingHoursDto;
 }
 
 export class UpdateRuleDto {
@@ -83,4 +103,9 @@ export class UpdateRuleDto {
 
   @IsOptional() @IsBoolean() enabled?: boolean;
   @IsOptional() @IsBoolean() global?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => WorkingHoursDto)
+  workingHours?: WorkingHoursDto;
 }

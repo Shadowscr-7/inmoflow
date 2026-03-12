@@ -30,6 +30,7 @@ import { LeadScoringModule } from "./lead-scoring/lead-scoring.module";
 import { PublicModule } from "./public/public.module";
 import { AgentPerformanceModule } from "./agent-performance/agent-performance.module";
 import { CommissionsModule } from "./commissions/commissions.module";
+import { QueuedActionsModule } from "./queued-actions/queued-actions.module";
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { CommissionsModule } from "./commissions/commissions.module";
     PublicModule,
     AgentPerformanceModule,
     CommissionsModule,
+    QueuedActionsModule,
     HealthModule,
   ],
   providers: [

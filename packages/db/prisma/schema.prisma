@@ -142,6 +142,7 @@ model Tenant {
   agentGoals         AgentGoal[]
   commissionRules    CommissionRule[]
   commissions        Commission[]
+  queuedActions      QueuedAction[]
 }
 
 model Domain {
@@ -264,6 +265,14 @@ model Lead {
   score          Int?
   temperature    LeadTemperature?
   notes          String?
+
+  /// When true, inbound messages trigger an automatic AI response
+  aiConversationActive Boolean  @default(false)
+  /// The instruction/prompt that the AI uses for this conversation (from the rule)
+  aiInstruction        String?
+  /// The rule that activated this AI conversation (for traceability)
+  aiRuleId             String?
+
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -281,6 +290,7 @@ model Lead {
   @@index([tenantId, createdAt])
   @@index([tenantId, phone])
   @@index([tenantId, temperature])
+  @@index([tenantId, aiConversationActive])
 }
 
 model LeadProfile {
@@ -356,24 +366,51 @@ model Template {
 }
 
 model Rule {
-  id         String   @id @default(uuid())
-  tenantId   String
-  userId     String?
-  name       String
-  enabled    Boolean  @default(true)
-  trigger    String
-  priority   Int      @default(100)
-  conditions Json
-  actions    Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(uuid())
+  tenantId     String
+  userId       String?
+  name         String
+  enabled      Boolean  @default(true)
+  trigger      String
+  priority     Int      @default(100)
+  conditions   Json
+  actions      Json
+  workingHours Json?    // { enabled, timezone, schedule: [{ day, from, to }] }
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  queuedActions QueuedAction[]
 
   @@index([tenantId, enabled])
   @@index([tenantId, trigger, priority])
   @@index([userId])
+}
+
+// ─── QUEUED ACTIONS (out-of-hours automation queue) ───
+
+model QueuedAction {
+  id         String   @id @default(uuid())
+  tenantId   String
+  ruleId     String
+  leadId     String
+  assigneeId String?  // agent who owns this lead — messages go from their WhatsApp
+  trigger    String
+  context    Json     // original evaluation context snapshot
+  status     String   @default("pending") // pending | processing | completed | failed | cancelled
+  attempts   Int      @default(0)
+  error      String?
+  createdAt  DateTime @default(now())
+  processAt  DateTime? // calculated next working-hours window start
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rule   Rule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([status, processAt])
+  @@index([assigneeId, status])
+  @@index([ruleId])
 }
 
 // ─── AI CONFIG ────────────────────────────────────────

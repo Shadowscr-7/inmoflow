@@ -307,7 +307,7 @@ export class TelegramProvider implements OnModuleInit {
         message: `Telegram message from ${contactName ?? telegramUserId}`,
       });
 
-      await this.eventProducer.emitMessageInbound(tenantId, lead.id, savedMsg.id, "TELEGRAM");
+      await this.eventProducer.emitMessageInbound(tenantId, lead.id, savedMsg.id, "TELEGRAM", text);
 
       // Detect first inbound message from this lead → emit lead.contacted
       const inboundCount = await this.prisma.message.count({

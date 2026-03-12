@@ -117,6 +117,9 @@ export interface Lead {
   stageId: string | null;
   assigneeId: string | null;
   primaryChannel: string | null;
+  aiConversationActive: boolean;
+  aiInstruction: string | null;
+  aiRuleId: string | null;
   createdAt: string;
   updatedAt: string;
   stage: { id: string; key: string; name: string; order: number } | null;
@@ -197,6 +200,7 @@ export interface Message {
   content: string;
   status: string | null;
   error: string | null;
+  rawPayload?: { aiGenerated?: boolean; aiAutoReply?: boolean; provider?: string; model?: string } | null;
   createdAt: string;
 }
 
@@ -263,9 +267,40 @@ export interface Rule {
   priority: number;
   conditions: Record<string, unknown>;
   actions: RuleAction[];
+  workingHours: WorkingHours | null;
   createdAt: string;
   updatedAt: string;
   user?: { id: string; name: string | null; email: string; role: string } | null;
+}
+
+export interface WorkingHoursSchedule {
+  day: number;
+  from: string;
+  to: string;
+}
+
+export interface WorkingHours {
+  enabled: boolean;
+  timezone: string;
+  schedule: WorkingHoursSchedule[];
+}
+
+export interface QueuedAction {
+  id: string;
+  tenantId: string;
+  ruleId: string;
+  leadId: string;
+  assigneeId: string | null;
+  trigger: string;
+  context: Record<string, unknown>;
+  status: string;
+  attempts: number;
+  error: string | null;
+  createdAt: string;
+  processAt: string | null;
+  rule?: { id: string; name: string; trigger: string };
+  lead?: { id: string; name: string | null; phone: string | null } | null;
+  assignee?: { id: string; name: string | null; email: string } | null;
 }
 
 // ─── Notifications ────────────────────────────────────
@@ -651,6 +686,13 @@ export const api = {
   updateLead(token: string, id: string, data: Record<string, unknown>) {
     return apiFetch<Lead>(`/leads/${id}`, { token, method: "PATCH", body: JSON.stringify(data) });
   },
+  toggleAiConversation(token: string, leadId: string, active: boolean, instruction?: string) {
+    return apiFetch<Lead>(`/leads/${leadId}/ai`, {
+      token,
+      method: "PATCH",
+      body: JSON.stringify({ active, ...(instruction !== undefined && { instruction }) }),
+    });
+  },
   deleteLead(token: string, id: string) {
     return apiFetch<void>(`/leads/${id}`, { token, method: "DELETE" });
   },
@@ -797,6 +839,24 @@ export const api = {
   },
   deleteRule(token: string, id: string) {
     return apiFetch<void>(`/rules/${id}`, { token, method: "DELETE" });
+  },
+
+  // ─── Queued Actions ───────────────────────────────
+  getQueuedActions(token: string, params?: Record<string, string>) {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return apiFetch<QueuedAction[]>(`/queued-actions${qs}`, { token });
+  },
+  getQueuedActionsCount(token: string) {
+    return apiFetch<{ pending: number }>("/queued-actions/count", { token });
+  },
+  cancelQueuedAction(token: string, id: string) {
+    return apiFetch<QueuedAction>(`/queued-actions/${id}/cancel`, { token, method: "PATCH" });
+  },
+  cancelAllQueuedActions(token: string) {
+    return apiFetch<{ cancelled: number }>("/queued-actions/cancel-all", { token, method: "DELETE" });
+  },
+  retryQueuedAction(token: string, id: string) {
+    return apiFetch<QueuedAction>(`/queued-actions/${id}/retry`, { token, method: "PATCH" });
   },
 
   // ─── Notifications ────────────────────────────────

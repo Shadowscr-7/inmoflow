@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api, Rule, RuleAction, PipelineStage, Template, User } from "@/lib/api";
+import { api, Rule, RuleAction, PipelineStage, Template, User, WorkingHours, WorkingHoursSchedule } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Plus, Zap, Pencil, Trash2, X, Globe, User as UserIcon, ArrowRight } from "lucide-react";
+import { Plus, Zap, Pencil, Trash2, X, Globe, User as UserIcon, ArrowRight, Clock } from "lucide-react";
 import { PageHeader, Modal, EmptyState, Toggle, Badge, PageLoader, useToast, useConfirm } from "@/components/ui";
 
 // ─── Constants ───────────────────────────────────────
@@ -91,7 +91,22 @@ interface RuleForm {
   conditions: Condition[];
   actions: RuleAction[];
   global: boolean;
+  workingHours: WorkingHours;
 }
+
+const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+const DEFAULT_WORKING_HOURS: WorkingHours = {
+  enabled: false,
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  schedule: [
+    { day: 1, from: "09:00", to: "18:00" },
+    { day: 2, from: "09:00", to: "18:00" },
+    { day: 3, from: "09:00", to: "18:00" },
+    { day: 4, from: "09:00", to: "18:00" },
+    { day: 5, from: "09:00", to: "18:00" },
+  ],
+};
 
 const EMPTY_FORM: RuleForm = {
   name: "",
@@ -101,6 +116,7 @@ const EMPTY_FORM: RuleForm = {
   conditions: [],
   actions: [{ ...EMPTY_ACTION }],
   global: false,
+  workingHours: { ...DEFAULT_WORKING_HOURS },
 };
 
 type Scope = "all" | "mine" | "global";
@@ -196,7 +212,7 @@ export default function RulesPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, conditions: [], actions: [{ ...EMPTY_ACTION }] });
+    setForm({ ...EMPTY_FORM, conditions: [], actions: [{ ...EMPTY_ACTION }], workingHours: { ...DEFAULT_WORKING_HOURS } });
     setShowModal(true);
   };
 
@@ -210,6 +226,7 @@ export default function RulesPage() {
       conditions: jsonToConditions(r.conditions),
       actions: r.actions.length > 0 ? [...r.actions] : [{ ...EMPTY_ACTION }],
       global: r.userId === null,
+      workingHours: r.workingHours ?? { ...DEFAULT_WORKING_HOURS },
     });
     setShowModal(true);
   };
@@ -228,6 +245,7 @@ export default function RulesPage() {
         enabled: form.enabled,
         conditions: parsedConditions,
         actions: cleanActions,
+        workingHours: form.workingHours.enabled ? form.workingHours : null,
       };
       if (isAdmin) payload.global = form.global;
       if (editing) {
@@ -466,6 +484,11 @@ export default function RulesPage() {
                   <h3 className="font-semibold text-gray-900 dark:text-white">{r.name}</h3>
                   <Badge variant="purple">{TRIGGER_OPTIONS.find((t) => t.value === r.trigger)?.icon ?? "⚡"} {triggerLabel(r.trigger)}</Badge>
                   {ownerBadge(r)}
+                  {r.workingHours?.enabled && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300 dark:border-cyan-800">
+                      <Clock className="w-3 h-3" /> Horario
+                    </span>
+                  )}
                 </div>
 
                 {Object.keys(r.conditions).length > 0 && (
@@ -534,10 +557,10 @@ export default function RulesPage() {
               <label className="label">¿Cuándo se ejecuta?</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {TRIGGER_OPTIONS.map((t) => (
-                  <button key={t.value} type="button" onClick={() => setForm({ ...form, trigger: t.value })} className={`text-left p-3 rounded-xl border-2 transition-all ${form.trigger === t.value ? "border-brand-500 bg-brand-50 shadow-sm" : "border-gray-200 hover:border-gray-300 bg-white dark:bg-gray-800"}`}>
+                  <button key={t.value} type="button" onClick={() => setForm({ ...form, trigger: t.value })} className={`text-left p-3 rounded-xl border-2 transition-all ${form.trigger === t.value ? "border-brand-500 bg-brand-50 dark:bg-brand-950 shadow-sm" : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800"}`}>
                     <div className="text-lg mb-1">{t.icon}</div>
-                    <div className="text-sm font-medium text-gray-900 dark:text-white">{t.label}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t.description}</div>
+                    <div className={`text-sm font-medium ${form.trigger === t.value ? "text-brand-700 dark:text-brand-300" : "text-gray-900 dark:text-white"}`}>{t.label}</div>
+                    <div className={`text-xs mt-0.5 ${form.trigger === t.value ? "text-brand-600 dark:text-brand-400" : "text-gray-500 dark:text-gray-400"}`}>{t.description}</div>
                   </button>
                 ))}
               </div>
@@ -645,6 +668,130 @@ export default function RulesPage() {
 
             {/* Priority */}
             <div className="grid grid-cols-2 gap-4">
+
+            {/* Working hours schedule */}
+            <div className="col-span-2">
+              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
+                <div className="flex items-center gap-3 mb-3">
+                  <Toggle
+                    checked={form.workingHours.enabled}
+                    onChange={(v) =>
+                      setForm({
+                        ...form,
+                        workingHours: { ...form.workingHours, enabled: v },
+                      })
+                    }
+                  />
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4" /> Horario de trabajo
+                    </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Si está fuera de horario, las acciones se encolan y se ejecutan al inicio del próximo horario
+                    </p>
+                  </div>
+                </div>
+
+                {form.workingHours.enabled && (
+                  <div className="space-y-3 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Zona horaria</label>
+                      <select
+                        value={form.workingHours.timezone}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            workingHours: { ...form.workingHours, timezone: e.target.value },
+                          })
+                        }
+                        className="input mt-1"
+                      >
+                        {[
+                          "America/Argentina/Buenos_Aires",
+                          "America/Montevideo",
+                          "America/Santiago",
+                          "America/Bogota",
+                          "America/Lima",
+                          "America/Mexico_City",
+                          "America/New_York",
+                          "America/Los_Angeles",
+                          "America/Sao_Paulo",
+                          "Europe/Madrid",
+                          "Europe/London",
+                          "UTC",
+                        ].map((tz) => (
+                          <option key={tz} value={tz}>
+                            {tz.replace(/_/g, " ")}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Días y horarios activos</label>
+                      {DAY_NAMES.map((dayName, dayIdx) => {
+                        const entry = form.workingHours.schedule.find((s) => s.day === dayIdx);
+                        const isActive = !!entry;
+                        return (
+                          <div key={dayIdx} className="flex items-center gap-2">
+                            <label className="w-24 text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={isActive}
+                                onChange={(e) => {
+                                  const schedule = e.target.checked
+                                    ? [...form.workingHours.schedule, { day: dayIdx, from: "09:00", to: "18:00" }]
+                                    : form.workingHours.schedule.filter((s) => s.day !== dayIdx);
+                                  setForm({
+                                    ...form,
+                                    workingHours: { ...form.workingHours, schedule },
+                                  });
+                                }}
+                                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                              />
+                              {dayName}
+                            </label>
+                            {isActive && (
+                              <>
+                                <input
+                                  type="time"
+                                  value={entry.from}
+                                  onChange={(e) => {
+                                    const schedule = form.workingHours.schedule.map((s) =>
+                                      s.day === dayIdx ? { ...s, from: e.target.value } : s,
+                                    );
+                                    setForm({
+                                      ...form,
+                                      workingHours: { ...form.workingHours, schedule },
+                                    });
+                                  }}
+                                  className="input w-28 text-xs"
+                                />
+                                <span className="text-xs text-gray-400">a</span>
+                                <input
+                                  type="time"
+                                  value={entry.to}
+                                  onChange={(e) => {
+                                    const schedule = form.workingHours.schedule.map((s) =>
+                                      s.day === dayIdx ? { ...s, to: e.target.value } : s,
+                                    );
+                                    setForm({
+                                      ...form,
+                                      workingHours: { ...form.workingHours, schedule },
+                                    });
+                                  }}
+                                  className="input w-28 text-xs"
+                                />
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
               <div>
                 <label className="label">Prioridad</label>
                 <input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: parseInt(e.target.value) || 0 })} className="input" />

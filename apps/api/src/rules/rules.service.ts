@@ -4,13 +4,20 @@ import { EventLogService } from "../event-log/event-log.service";
 import { EventType, Prisma } from "@inmoflow/db";
 import { PlanService } from "../plan/plan.service";
 
+export interface WorkingHours {
+  enabled: boolean;
+  timezone: string;
+  schedule: { day: number; from: string; to: string }[];
+}
+
 export interface CreateRuleDto {
   name: string;
-  trigger: string; // "lead.created" | "lead.updated" | "message.inbound" | "stage.changed" | "no_response" | "scheduled"
+  trigger: string;
   priority?: number;
-  conditions: Record<string, unknown>; // visual builder produces this
-  actions: RuleAction[]; // [{ type: "assign", ... }, { type: "send_template", ... }]
+  conditions: Record<string, unknown>;
+  actions: RuleAction[];
   enabled?: boolean;
+  workingHours?: WorkingHours;
 }
 
 export interface UpdateRuleDto {
@@ -21,6 +28,7 @@ export interface UpdateRuleDto {
   actions?: RuleAction[];
   enabled?: boolean;
   global?: boolean;
+  workingHours?: WorkingHours | null;
 }
 
 export interface RuleAction {
@@ -109,6 +117,9 @@ export class RulesService {
         conditions: dto.conditions as Prisma.InputJsonValue,
         actions: dto.actions as unknown as Prisma.InputJsonValue,
         enabled: dto.enabled ?? true,
+        workingHours: dto.workingHours
+          ? (dto.workingHours as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
       },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },
     });
@@ -145,6 +156,11 @@ export class RulesService {
           actions: dto.actions as unknown as Prisma.InputJsonValue,
         }),
         ...(dto.enabled !== undefined && { enabled: dto.enabled }),
+        ...(dto.workingHours !== undefined && {
+          workingHours: dto.workingHours
+            ? (dto.workingHours as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+        }),
         ...(userIdUpdate !== undefined && { userId: userIdUpdate }),
       },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },

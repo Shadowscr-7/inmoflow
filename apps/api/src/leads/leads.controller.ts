@@ -116,6 +116,19 @@ export class LeadsController {
     return this.leadsService.update(tenantId, id, dto);
   }
 
+  /** Toggle AI conversation mode for a lead */
+  @Patch(":id/ai")
+  toggleAi(
+    @TenantId() tenantId: string,
+    @Param("id") id: string,
+    @Body() body: { active: boolean; instruction?: string },
+  ) {
+    return this.leadsService.update(tenantId, id, {
+      aiConversationActive: body.active,
+      ...(body.instruction !== undefined && { aiInstruction: body.instruction }),
+    });
+  }
+
   @Delete(":id")
   @UseGuards(RolesGuard)
   @Roles("ADMIN", "BUSINESS", "AGENT")

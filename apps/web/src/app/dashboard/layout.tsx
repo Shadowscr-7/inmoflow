@@ -36,6 +36,7 @@ import {
   Settings2,
   Trophy,
   Wallet,
+  Clock,
 } from "lucide-react";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -66,6 +67,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Canales", href: "/dashboard/channels", icon: Radio, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Plantillas", href: "/dashboard/templates", icon: FileText, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Automatizaciones", href: "/dashboard/rules", icon: Zap, roles: ["ADMIN", "BUSINESS", "AGENT"] },
+  { label: "Cola pendiente", href: "/dashboard/queued-actions", icon: Clock, roles: ["ADMIN", "BUSINESS"] },
   { label: "Importar", href: "/dashboard/import", icon: Upload, roles: ["ADMIN", "BUSINESS"] },
   { label: "Reportes", href: "/dashboard/reports", icon: BarChart3, roles: ["ADMIN", "BUSINESS"] },
   { label: "Rendimiento", href: "/dashboard/agent-performance", icon: Trophy, roles: ["ADMIN", "BUSINESS"] },

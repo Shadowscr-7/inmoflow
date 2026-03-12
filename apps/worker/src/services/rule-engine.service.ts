@@ -4,6 +4,20 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AiAgentService } from "./ai-agent.service";
 import { MessageSenderService } from "./message-sender.service";
 
+// ─── Working hours types ──────────────────────────────
+
+interface WorkingHoursSchedule {
+  day: number;  // 0 = Sunday … 6 = Saturday
+  from: string; // "HH:mm"
+  to: string;   // "HH:mm"
+}
+
+interface WorkingHours {
+  enabled: boolean;
+  timezone: string;
+  schedule: WorkingHoursSchedule[];
+}
+
 /**
  * RuleEngineService — evaluates tenant rules and executes actions.
  *
@@ -80,6 +94,7 @@ export class RuleEngineService {
 
     let rulesMatched = 0;
     let actionsExecuted = 0;
+    let rulesQueued = 0;
 
     for (const rule of rules) {
       const conditions = (rule.conditions as Record<string, unknown>) ?? {};
@@ -90,6 +105,50 @@ export class RuleEngineService {
 
       rulesMatched++;
       this.logger.log(`Rule matched: "${rule.name}" (${rule.id}) for lead ${leadId}`);
+
+      // ── Working hours check ─────────────────────────
+      const wh = rule.workingHours as unknown as WorkingHours | null;
+      if (wh && wh.enabled && !this.isWithinWorkingHours(wh)) {
+        // Queue the action for later processing
+        const nextWindow = this.getNextWorkingWindowStart(wh);
+        await this.prisma.queuedAction.create({
+          data: {
+            tenantId,
+            ruleId: rule.id,
+            leadId,
+            assigneeId: lead.assigneeId ?? null, // track which agent owns this lead
+            trigger,
+            context: { ...evalContext } as unknown as Prisma.InputJsonValue,
+            status: "pending",
+            processAt: nextWindow,
+          },
+        });
+
+        rulesQueued++;
+        this.logger.log(
+          `Rule "${rule.name}" queued — outside working hours. Next window: ${nextWindow?.toISOString() ?? "unknown"}`,
+        );
+
+        await this.prisma.eventLog.create({
+          data: {
+            tenantId,
+            type: EventType.workflow_executed,
+            entity: "Rule",
+            entityId: rule.id,
+            status: "ok",
+            message: `Rule "${rule.name}" queued (outside working hours) for lead ${leadId}. Scheduled: ${nextWindow?.toISOString() ?? "next window"}`,
+            payload: {
+              ruleId: rule.id,
+              leadId,
+              trigger,
+              queued: true,
+              processAt: nextWindow?.toISOString(),
+            } as unknown as Prisma.InputJsonValue,
+          },
+        });
+
+        continue;
+      }
 
       const actions = (rule.actions as unknown as RuleAction[]) ?? [];
 
@@ -449,7 +508,8 @@ export class RuleEngineService {
 
   /**
    * send_ai_message — Generates an AI response using the tenant's configured AI provider.
-   * Falls back to template-based generation if no AI provider is configured.
+   * Also activates "AI conversation mode" on the lead so subsequent inbound messages
+   * are automatically answered by the AI until an agent takes over.
    */
   private async actionSendAiMessage(tenantId: string, leadId: string, action: RuleAction) {
     const lead = await this.prisma.lead.findFirst({
@@ -476,6 +536,19 @@ export class RuleEngineService {
       return;
     }
 
+    // ── Activate AI conversation mode on the lead ──
+    // This keeps the AI responding to every subsequent inbound message
+    // until a human agent takes over or deactivates it manually.
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        aiConversationActive: true,
+        aiInstruction: instruction,
+        aiRuleId: null, // will be set in executeSingleRule if needed
+      },
+    });
+    this.logger.log(`AI conversation ACTIVATED for lead ${leadId} — instruction: "${instruction.slice(0, 60)}…"`);
+
     const msg = await this.prisma.message.create({
       data: {
         tenantId,
@@ -498,6 +571,102 @@ export class RuleEngineService {
     this.logger.debug(`AI message sent for lead ${leadId}: "${instruction}"`);
   }
 
+  // ─── AI Conversation Auto-Reply ─────────────────────
+
+  /**
+   * Called by MessageProcessor on every inbound message.
+   * If the lead has `aiConversationActive = true`, generates and sends an AI reply
+   * using the stored instruction. Returns true if a reply was sent.
+   */
+  async handleAiAutoReply(
+    tenantId: string,
+    leadId: string,
+    inboundMessage: string,
+  ): Promise<boolean> {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, tenantId },
+    });
+
+    if (!lead || !lead.aiConversationActive) return false;
+
+    const instruction = lead.aiInstruction ?? "Respondé al cliente de forma amable y profesional";
+    const channel = (lead.primaryChannel ?? "WEB") as MessageChannel;
+
+    // Check AI availability
+    const available = await this.aiAgent.isAvailable(tenantId, lead.assigneeId);
+    if (!available) {
+      this.logger.warn(`AI not available for auto-reply — lead ${leadId}`);
+      return false;
+    }
+
+    // Generate AI response with full history + the latest inbound message
+    const aiResult = await this.aiAgent.generateResponse(
+      tenantId,
+      leadId,
+      instruction,
+      inboundMessage,
+    );
+
+    if (!aiResult) {
+      this.logger.warn(`AI failed to generate auto-reply for lead ${leadId}`);
+      return false;
+    }
+
+    // Save and send through the agent's WhatsApp
+    const msg = await this.prisma.message.create({
+      data: {
+        tenantId,
+        leadId,
+        direction: "OUT",
+        channel,
+        content: aiResult.content,
+        status: "queued",
+        rawPayload: {
+          aiGenerated: true,
+          aiAutoReply: true,
+          instruction,
+          provider: aiResult.provider,
+          model: aiResult.model,
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.messageSender.sendQueuedMessage(msg.id);
+
+    this.logger.log(
+      `AI auto-reply sent for lead ${leadId}: "${aiResult.content.slice(0, 60)}…" (${aiResult.provider}/${aiResult.model})`,
+    );
+
+    return true;
+  }
+
+  /**
+   * Deactivate AI conversation for a lead (e.g. when an agent sends a manual message).
+   */
+  async deactivateAiConversation(tenantId: string, leadId: string, reason: string): Promise<void> {
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        aiConversationActive: false,
+        // Keep aiInstruction for history/reference
+      },
+    });
+
+    await this.prisma.eventLog.create({
+      data: {
+        tenantId,
+        type: EventType.workflow_executed,
+        entity: "Lead",
+        entityId: leadId,
+        status: "ok",
+        message: `AI conversation deactivated for lead ${leadId}: ${reason}`,
+        payload: { reason } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    this.logger.log(`AI conversation DEACTIVATED for lead ${leadId}: ${reason}`);
+  }
+
   /**
    * Simple follow-up message generator for MVP.
    */
@@ -511,6 +680,101 @@ export class RuleEngineService {
       return `Hola ${clientName}, ¿te gustaría agendar una visita para conocer las propiedades que tenemos disponibles? Puedo coordinar un horario que te resulte cómodo.`;
     }
     return `Hola ${clientName}, nos comunicamos desde la inmobiliaria. ${instruction}. Quedo a tu disposición para cualquier consulta.`;
+  }
+
+  // ─── Working hours helpers ──────────────────────────
+
+  /**
+   * Check if the current time falls within the rule's working hours.
+   */
+  isWithinWorkingHours(wh: WorkingHours): boolean {
+    if (!wh.enabled || !wh.schedule || wh.schedule.length === 0) return true;
+
+    const now = this.getNowInTimezone(wh.timezone);
+    const dayOfWeek = now.getDay(); // 0 = Sunday
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Check if any schedule entry covers the current time
+    for (const entry of wh.schedule) {
+      if (entry.day !== dayOfWeek) continue;
+      const fromMin = this.parseTimeToMinutes(entry.from);
+      const toMin = this.parseTimeToMinutes(entry.to);
+      if (currentMinutes >= fromMin && currentMinutes < toMin) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Calculate when the next working-hours window begins.
+   */
+  getNextWorkingWindowStart(wh: WorkingHours): Date | null {
+    if (!wh.schedule || wh.schedule.length === 0) return null;
+
+    const now = this.getNowInTimezone(wh.timezone);
+    const currentDay = now.getDay();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Sort schedule entries by day, then by from time
+    const sorted = [...wh.schedule].sort((a, b) =>
+      a.day !== b.day ? a.day - b.day : this.parseTimeToMinutes(a.from) - this.parseTimeToMinutes(b.from),
+    );
+
+    // First try to find a slot later today
+    for (const entry of sorted) {
+      if (entry.day === currentDay) {
+        const fromMin = this.parseTimeToMinutes(entry.from);
+        if (fromMin > currentMinutes) {
+          return this.buildDateInTimezone(wh.timezone, 0, entry.from);
+        }
+      }
+    }
+
+    // Then look ahead up to 7 days
+    for (let offset = 1; offset <= 7; offset++) {
+      const targetDay = (currentDay + offset) % 7;
+      for (const entry of sorted) {
+        if (entry.day === targetDay) {
+          return this.buildDateInTimezone(wh.timezone, offset, entry.from);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private getNowInTimezone(timezone: string): Date {
+    try {
+      const nowStr = new Date().toLocaleString("en-US", { timeZone: timezone });
+      return new Date(nowStr);
+    } catch {
+      // Fallback to UTC if timezone is invalid
+      return new Date();
+    }
+  }
+
+  private buildDateInTimezone(timezone: string, daysOffset: number, time: string): Date {
+    const now = this.getNowInTimezone(timezone);
+    now.setDate(now.getDate() + daysOffset);
+    const [h, m] = time.split(":").map(Number);
+    now.setHours(h, m, 0, 0);
+
+    // Convert back to UTC for storage
+    try {
+      const utcStr = new Date().toLocaleString("en-US", { timeZone: timezone });
+      const utcDate = new Date(utcStr);
+      const offset = utcDate.getTime() - new Date().getTime();
+      return new Date(now.getTime() - offset);
+    } catch {
+      return now;
+    }
+  }
+
+  private parseTimeToMinutes(time: string): number {
+    const [h, m] = time.split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
   }
 
   private sleep(ms: number): Promise<void> {

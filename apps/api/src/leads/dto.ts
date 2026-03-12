@@ -36,6 +36,8 @@ export class UpdateLeadDto {
   @IsOptional() @IsString() intent?: string;
   @IsOptional() @IsNumber() @Min(0) score?: number;
   @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsBoolean() aiConversationActive?: boolean;
+  @IsOptional() @IsString() aiInstruction?: string;
 }
 
 export class CreateStageDto {

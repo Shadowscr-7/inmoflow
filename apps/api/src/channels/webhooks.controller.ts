@@ -423,7 +423,7 @@ export class WebhooksController {
       payload: { leadId: lead.id, phone },
     });
 
-    await this.eventProducer.emitMessageInbound(tenantId, lead.id, message.id, "WHATSAPP");
+    await this.eventProducer.emitMessageInbound(tenantId, lead.id, message.id, "WHATSAPP", content);
 
     // Detect first inbound message from this lead → emit lead.contacted
     const inboundCount = await this.prisma.message.count({

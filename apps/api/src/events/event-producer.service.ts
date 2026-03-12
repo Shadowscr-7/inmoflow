@@ -104,10 +104,11 @@ export class EventProducerService {
     leadId: string,
     messageId: string,
     channel: string,
+    content?: string,
   ) {
     const job = await this.messageQueue.add(
       "message.inbound",
-      { tenantId, leadId, messageId, channel },
+      { tenantId, leadId, messageId, channel, content: content ?? "" },
       {
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },

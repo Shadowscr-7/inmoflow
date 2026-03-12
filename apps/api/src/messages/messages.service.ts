@@ -133,6 +133,26 @@ export class MessagesService {
       payload: { leadId, channel, to },
     });
 
+    // ── Auto-deactivate AI conversation when an agent sends manually ──
+    // This means the human is taking over the conversation.
+    if (lead.aiConversationActive) {
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: { aiConversationActive: false },
+      });
+
+      await this.eventLog.log({
+        tenantId,
+        type: EventType.workflow_executed,
+        entity: "Lead",
+        entityId: leadId,
+        message: `AI conversation deactivated — agent sent manual message`,
+        payload: { reason: "agent_manual_message" },
+      });
+
+      this.logger.log(`AI conversation deactivated for lead ${leadId} — agent took over`);
+    }
+
     return message;
   }
 
