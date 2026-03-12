@@ -544,7 +544,7 @@ export class RuleEngineService {
       data: {
         aiConversationActive: true,
         aiInstruction: instruction,
-        aiGoal: (action as Record<string, unknown>).goal as string ?? null,
+        aiGoal: action.goal ?? null,
         aiRuleId: null, // will be set in executeSingleRule if needed
       },
     });
@@ -961,4 +961,5 @@ interface RuleAction {
   content?: string;
   channel?: string;
   delayMs?: number;
+  goal?: string;
 }
