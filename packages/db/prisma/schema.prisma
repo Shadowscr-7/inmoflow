@@ -143,6 +143,7 @@ model Tenant {
   commissionRules    CommissionRule[]
   commissions        Commission[]
   queuedActions      QueuedAction[]
+  agentAvailabilities AgentAvailability[]
 }
 
 model Domain {
@@ -176,6 +177,12 @@ model User {
   notificationPrefs NotificationPreference[]
   agentGoals        AgentGoal[]
   aiConfigs         AiConfig[]
+  availability      AgentAvailability[]
+
+  /// Google Calendar OAuth refresh token (encrypted)
+  googleCalendarRefreshToken String?
+  /// Whether Google Calendar sync is enabled for this agent
+  googleCalendarEnabled      Boolean @default(false)
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -272,6 +279,12 @@ model Lead {
   aiInstruction        String?
   /// The rule that activated this AI conversation (for traceability)
   aiRuleId             String?
+  /// The goal that the AI should achieve (e.g., "agendar visita"). When achieved, AI auto-deactivates.
+  aiGoal               String?
+  /// Demo mode: AI messages are redirected to a test phone instead of the real lead
+  aiDemoMode           Boolean  @default(false)
+  /// The phone number to redirect AI messages to in demo mode
+  aiDemoPhone          String?
 
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -566,18 +579,21 @@ enum VisitStatus {
 }
 
 model Visit {
-  id         String      @id @default(uuid())
-  tenantId   String
-  leadId     String
-  propertyId String?
-  agentId    String?
-  date       DateTime
-  endDate    DateTime?
-  status     VisitStatus @default(SCHEDULED)
-  notes      String?
-  address    String?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id            String      @id @default(uuid())
+  tenantId      String
+  leadId        String
+  propertyId    String?
+  agentId       String?
+  date          DateTime
+  endDate       DateTime?
+  status        VisitStatus @default(SCHEDULED)
+  notes         String?
+  address       String?
+  googleEventId String?     // Google Calendar event ID for sync
+  reminderSent  Boolean     @default(false)
+  createdByAi   Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -587,6 +603,26 @@ model Visit {
   @@index([tenantId, agentId, date])
   @@index([tenantId, leadId])
   @@index([tenantId, status])
+}
+
+// ─── AGENT AVAILABILITY ───────────────────────────────
+
+/// Weekly recurring availability slots for each agent.
+/// Defines when the agent is available for visits/appointments.
+model AgentAvailability {
+  id        String  @id @default(uuid())
+  tenantId  String
+  userId    String
+  dayOfWeek Int     // 0=Sunday, 1=Monday, ..., 6=Saturday
+  startTime String  // "09:00" (HH:mm)
+  endTime   String  // "18:00" (HH:mm)
+  active    Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayOfWeek])
+  @@index([tenantId, userId])
 }
 
 // ─── FOLLOW-UP SEQUENCES ─────────────────────────────

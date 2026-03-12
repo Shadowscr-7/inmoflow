@@ -120,6 +120,9 @@ export interface Lead {
   aiConversationActive: boolean;
   aiInstruction: string | null;
   aiRuleId: string | null;
+  aiDemoMode: boolean;
+  aiDemoPhone: string | null;
+  aiGoal: string | null;
   createdAt: string;
   updatedAt: string;
   stage: { id: string; key: string; name: string; order: number } | null;
@@ -450,6 +453,18 @@ export interface PropertiesResponse {
   offset: number;
 }
 
+// ─── Agent Availability ───────────────────────────────
+
+export interface AgentAvailability {
+  id: string;
+  tenantId: string;
+  userId: string;
+  dayOfWeek: number; // 0=Sunday, 1=Monday, ..., 6=Saturday
+  startTime: string; // "09:00"
+  endTime: string;   // "18:00"
+  active: boolean;
+}
+
 // ─── Visits ───────────────────────────────────────────
 
 export interface Visit {
@@ -463,6 +478,9 @@ export interface Visit {
   status: "SCHEDULED" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   notes: string | null;
   address: string | null;
+  googleEventId?: string | null;
+  reminderSent?: boolean;
+  createdByAi?: boolean;
   createdAt: string;
   updatedAt: string;
   lead?: { id: string; name: string | null; phone: string | null; email: string | null };
@@ -686,11 +704,17 @@ export const api = {
   updateLead(token: string, id: string, data: Record<string, unknown>) {
     return apiFetch<Lead>(`/leads/${id}`, { token, method: "PATCH", body: JSON.stringify(data) });
   },
-  toggleAiConversation(token: string, leadId: string, active: boolean, instruction?: string) {
+  toggleAiConversation(token: string, leadId: string, active: boolean, instruction?: string, demoMode?: boolean, demoPhone?: string, goal?: string) {
     return apiFetch<Lead>(`/leads/${leadId}/ai`, {
       token,
       method: "PATCH",
-      body: JSON.stringify({ active, ...(instruction !== undefined && { instruction }) }),
+      body: JSON.stringify({
+        active,
+        ...(instruction !== undefined && { instruction }),
+        ...(demoMode !== undefined && { demoMode }),
+        ...(demoPhone !== undefined && { demoPhone }),
+        ...(goal !== undefined && { goal }),
+      }),
     });
   },
   deleteLead(token: string, id: string) {
@@ -1048,6 +1072,24 @@ export const api = {
   },
   deleteVisit(token: string, id: string) {
     return apiFetch<void>(`/visits/${id}`, { token, method: "DELETE" });
+  },
+
+  // ─── Agent Availability ──────────────────────────
+  getMyAvailability(token: string) {
+    return apiFetch<AgentAvailability[]>("/users/me/availability", { token });
+  },
+  getAgentAvailability(token: string, userId: string) {
+    return apiFetch<AgentAvailability[]>(`/users/${userId}/availability`, { token });
+  },
+  setMyAvailability(token: string, slots: { dayOfWeek: number; startTime: string; endTime: string; active: boolean }[]) {
+    return apiFetch<AgentAvailability[]>("/users/me/availability", {
+      token, method: "PATCH", body: JSON.stringify({ slots }),
+    });
+  },
+  getAvailableSlots(token: string, agentId: string, from: string, to: string) {
+    return apiFetch<{ date: string; day: string; slots: string[] }[]>(
+      `/users/${agentId}/available-slots?from=${from}&to=${to}`, { token },
+    );
   },
 
   // ─── Follow-Up Sequences ─────────────────────────

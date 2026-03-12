@@ -101,4 +101,39 @@ export class UsersController {
   ) {
     return this.usersService.deactivate(id, user.tenantId, user.role);
   }
+
+  // ─── Agent Availability ──────────────────────────────
+
+  /** GET /users/me/availability — Get my weekly availability */
+  @Get("me/availability")
+  getMyAvailability(@CurrentUser() user: { userId: string }) {
+    return this.usersService.getAvailability(user.userId);
+  }
+
+  /** GET /users/:id/availability — Get an agent's availability */
+  @Get(":id/availability")
+  getAvailability(@Param("id") id: string) {
+    return this.usersService.getAvailability(id);
+  }
+
+  /** PUT /users/me/availability — Set my weekly availability */
+  @Patch("me/availability")
+  setMyAvailability(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string },
+    @Body() body: { slots: { dayOfWeek: number; startTime: string; endTime: string; active: boolean }[] },
+  ) {
+    return this.usersService.setAvailability(tenantId, user.userId, body.slots);
+  }
+
+  /** GET /users/:id/available-slots — Get available appointment slots for an agent */
+  @Get(":id/available-slots")
+  getAvailableSlots(
+    @TenantId() tenantId: string,
+    @Param("id") agentId: string,
+    @Query("from") from: string,
+    @Query("to") to: string,
+  ) {
+    return this.usersService.getAvailableSlots(tenantId, agentId, from, to);
+  }
 }

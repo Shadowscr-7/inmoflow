@@ -8,6 +8,7 @@ import { WorkflowProcessor } from "./processors/workflow.processor";
 import { RuleEngineService } from "./services/rule-engine.service";
 import { NoResponseScheduler } from "./services/no-response.scheduler";
 import { QueueDrainScheduler } from "./services/queue-drain.scheduler";
+import { AppointmentReminderScheduler } from "./services/appointment-reminder.scheduler";
 import { AiAgentService } from "./services/ai-agent.service";
 import { MessageSenderService } from "./services/message-sender.service";
 
@@ -34,6 +35,7 @@ import { MessageSenderService } from "./services/message-sender.service";
     RuleEngineService,
     NoResponseScheduler,
     QueueDrainScheduler,
+    AppointmentReminderScheduler,
     LeadProcessor,
     MessageProcessor,
     WorkflowProcessor,

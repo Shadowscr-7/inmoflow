@@ -28,6 +28,9 @@ export interface UpdateLeadDto {
   notes?: string;
   aiConversationActive?: boolean;
   aiInstruction?: string;
+  aiDemoMode?: boolean;
+  aiDemoPhone?: string | null;
+  aiGoal?: string | null;
 }
 
 export interface LeadFilters {
@@ -202,6 +205,18 @@ export class LeadsService {
     if (dto.aiInstruction !== undefined) {
       data.aiInstruction = dto.aiInstruction;
       changes.aiInstruction = dto.aiInstruction;
+    }
+    if (dto.aiDemoMode !== undefined) {
+      data.aiDemoMode = dto.aiDemoMode;
+      changes.aiDemoMode = dto.aiDemoMode;
+    }
+    if (dto.aiDemoPhone !== undefined) {
+      data.aiDemoPhone = dto.aiDemoPhone;
+      changes.aiDemoPhone = dto.aiDemoPhone;
+    }
+    if (dto.aiGoal !== undefined) {
+      data.aiGoal = dto.aiGoal;
+      changes.aiGoal = dto.aiGoal;
     }
     if (dto.assigneeId !== undefined) {
       data.assignee = dto.assigneeId

@@ -38,6 +38,9 @@ export class UpdateLeadDto {
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsBoolean() aiConversationActive?: boolean;
   @IsOptional() @IsString() aiInstruction?: string;
+  @IsOptional() @IsBoolean() aiDemoMode?: boolean;
+  @IsOptional() @IsString() aiDemoPhone?: string;
+  @IsOptional() @IsString() aiGoal?: string;
 }
 
 export class CreateStageDto {

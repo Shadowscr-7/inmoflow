@@ -85,13 +85,21 @@ export class MessageSenderService {
   private async sendWhatsApp(
     messageId: string,
     tenantId: string,
-    lead: { assigneeId: string | null; whatsappFrom: string | null; phone: string | null },
+    lead: { assigneeId: string | null; whatsappFrom: string | null; phone: string | null; aiDemoMode?: boolean; aiDemoPhone?: string | null },
     content: string,
   ): Promise<boolean> {
-    const phone = lead.whatsappFrom ?? lead.phone;
+    // In AI demo mode, redirect messages to the test phone number
+    const isDemoRedirect = !!(lead.aiDemoMode && lead.aiDemoPhone);
+    const phone = isDemoRedirect
+      ? lead.aiDemoPhone
+      : (lead.whatsappFrom ?? lead.phone);
     if (!phone) {
       await this.markFailed(messageId, "Lead has no WhatsApp number");
       return false;
+    }
+
+    if (isDemoRedirect) {
+      this.logger.log(`AI DEMO MODE: redirecting message ${messageId.slice(0, 8)} to test phone ${lead.aiDemoPhone}`);
     }
 
     // Find channel — prefer assigned agent's channel, fallback to any

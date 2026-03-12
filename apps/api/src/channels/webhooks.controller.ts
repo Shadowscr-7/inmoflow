@@ -361,6 +361,26 @@ export class WebhooksController {
       });
     }
 
+    // ── AI Demo Mode: check if this phone matches a lead's demo test number ──
+    // When demo mode is active, messages from the test phone are treated as
+    // if they came from the real lead — so the business owner can chat with the AI.
+    let isDemoInbound = false;
+    if (!lead || !lead.aiConversationActive) {
+      const demoLead = await this.prisma.lead.findFirst({
+        where: {
+          tenantId,
+          aiConversationActive: true,
+          aiDemoMode: true,
+          aiDemoPhone: phone,
+        },
+      });
+      if (demoLead) {
+        lead = demoLead;
+        isDemoInbound = true;
+        this.logger.log(`AI DEMO: inbound from test phone ${phone} → routed to lead ${lead.id}`);
+      }
+    }
+
     if (!lead) {
       // Auto-create lead and assign to channel owner
       const defaultStage = await this.prisma.leadStage.findFirst({
@@ -410,7 +430,10 @@ export class WebhooksController {
         from: phone,
         content,
         providerMessageId: msgData.key?.id,
-        rawPayload: msgData as unknown as Prisma.InputJsonValue,
+        rawPayload: {
+          ...(msgData as Record<string, unknown>),
+          ...(isDemoInbound && { aiDemoInbound: true, demoPhone: phone }),
+        } as unknown as Prisma.InputJsonValue,
       },
     });
 

@@ -122,11 +122,89 @@ export class AiAgentService {
     if (lead.intent) systemParts.push(`Intención: ${lead.intent}`);
     if (lead.notes) systemParts.push(`Notas: ${lead.notes.slice(0, 500)}`);
 
+    // Add agent availability / calendar context
+    if (lead.assigneeId) {
+      try {
+        const availableSlots = await this.getAvailableSlots(tenantId, lead.assigneeId);
+        if (availableSlots.length > 0) {
+          systemParts.push(`\n--- Disponibilidad del agente para citas ---`);
+          systemParts.push(`Fecha actual: ${new Date().toLocaleDateString("es", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`);
+          systemParts.push(`Horarios disponibles para agendar visitas (próximos 7 días):`);
+          for (const day of availableSlots) {
+            systemParts.push(`  ${day.day} ${day.date}: ${day.slots.join(", ")} hs`);
+          }
+          systemParts.push(
+            `Cuando el cliente quiera agendar una visita, ofrecé SOLO horarios de esta lista. ` +
+            `No inventes horarios que no están disponibles. Si ningún horario le sirve, ` +
+            `ofrecé contactar al agente para coordinar algo especial.`
+          );
+        } else {
+          systemParts.push(`\n--- Disponibilidad ---`);
+          systemParts.push(`El agente no tiene horarios configurados. Si el cliente quiere agendar, pedile día/hora preferidos y decile que el agente le confirmará.`);
+        }
+      } catch {
+        // Non-blocking: if availability lookup fails, AI just won't have calendar data
+      }
+    }
+
     // Add rule-specific instruction
     if (instruction) {
       systemParts.push(`\n--- Instrucción específica ---`);
       systemParts.push(instruction);
     }
+
+    // Add goal-based deactivation instruction
+    if (lead.aiGoal) {
+      systemParts.push(`\n--- Meta de la conversación ---`);
+      systemParts.push(
+        `Tu meta principal en esta conversación es: ${lead.aiGoal}. ` +
+        `Cuando hayas logrado concretar exitosamente esta meta (por ejemplo, el cliente confirma una fecha/hora ` +
+        `para una visita, o acepta agendar una cita), incluí el texto exacto [META_CUMPLIDA] al FINAL de tu mensaje. ` +
+        `Solo usá [META_CUMPLIDA] cuando la meta se haya cumplido de forma clara y confirmada por el cliente. ` +
+        `No incluyas [META_CUMPLIDA] si el cliente aún no confirmó.`
+      );
+    }
+
+    // Add appointment booking marker instruction
+    systemParts.push(`\n--- Registro de citas ---`);
+    systemParts.push(
+      `Cuando el cliente confirme una cita o visita para un día y hora específicos, ` +
+      `incluí al final de tu mensaje el marcador [CITA:YYYY-MM-DD HH:MM] con la fecha y hora acordadas. ` +
+      `Ejemplo: si acuerdan el 15 de marzo de 2026 a las 10:00, poné [CITA:2026-03-15 10:00]. ` +
+      `Este marcador es interno, el cliente no lo ve. Podés combinarlo con [META_CUMPLIDA] si aplica.`
+    );
+
+    // Always add the "not interested" detection instruction
+    systemParts.push(`\n--- Detección de desinterés ---`);
+    systemParts.push(
+      `Si la persona indica claramente que NO está interesada, que no quiere seguir hablando, ` +
+      `que no busca nada por el momento, o rechaza repetidamente tus propuestas, NO insistas. ` +
+      `En ese caso, despedite amablemente agradeciéndole su tiempo, deseándole lo mejor ` +
+      `y diciéndole que quedás a las órdenes para cualquier consulta a futuro. ` +
+      `Al final de ese mensaje de despedida, incluí el texto exacto [LEAD_NO_INTERESADO]. ` +
+      `Solo usá [LEAD_NO_INTERESADO] cuando sea claro que la persona no tiene interés, ` +
+      `no lo uses si simplemente hace una pregunta o pide más información.`
+    );
+
+    // Add funnel stage progression instruction
+    systemParts.push(`\n--- Avance de etapa en el embudo ---`);
+    systemParts.push(
+      `El lead actualmente está en la etapa: ${lead.status}. ` +
+      `A medida que la conversación avanza, debés evaluar si el lead progresó de etapa. ` +
+      `Las etapas del embudo de ventas son (en orden):\n` +
+      `  CONTACTED → QUALIFIED → NEGOTIATION → VISIT\n` +
+      `Criterios para avanzar:\n` +
+      `  - QUALIFIED: El lead muestra interés genuino, hace preguntas específicas sobre propiedades, ` +
+      `    ubicación, precio, o características. Ya no es un contacto frío.\n` +
+      `  - NEGOTIATION: El lead está discutiendo condiciones concretas (precio, disponibilidad, ` +
+      `    formas de pago) o comparando opciones específicas.\n` +
+      `  - VISIT: El lead confirmó una visita o cita presencial (esto ya se maneja con [META_CUMPLIDA]).\n` +
+      `Cuando detectes que el lead avanzó a una nueva etapa, incluí al final de tu mensaje ` +
+      `el marcador [ETAPA:NOMBRE] donde NOMBRE es una de: QUALIFIED, NEGOTIATION. ` +
+      `Solo avanzá una etapa a la vez y solo cuando sea claro por lo que dijo el lead. ` +
+      `No retrocedas etapas. Si el lead ya está en QUALIFIED, no pongas [ETAPA:QUALIFIED] de nuevo. ` +
+      `Este marcador es interno y el cliente no lo ve.`
+    );
 
     // Build message history
     const messages: AiChatMessage[] = [
@@ -306,5 +384,76 @@ export class AiAgentService {
       model: opts.model,
       tokensUsed: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0),
     };
+  }
+
+  // ─── Calendar Availability Helper ─────────────────────
+
+  /**
+   * Compute available 1-hour slots for an agent over the next 7 days.
+   */
+  private async getAvailableSlots(
+    tenantId: string,
+    agentId: string,
+  ): Promise<{ date: string; day: string; slots: string[] }[]> {
+    const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    const now = new Date();
+    const from = new Date(now);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from);
+    to.setDate(to.getDate() + 7);
+
+    const availability = await this.prisma.agentAvailability.findMany({
+      where: { userId: agentId, active: true },
+    });
+
+    if (availability.length === 0) return [];
+
+    const existingVisits = await this.prisma.visit.findMany({
+      where: {
+        tenantId,
+        agentId,
+        date: { gte: from, lte: to },
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+      },
+      select: { date: true, endDate: true },
+    });
+
+    const result: { date: string; day: string; slots: string[] }[] = [];
+
+    for (let d = new Date(from); d < to; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
+      const avail = availability.find((a) => a.dayOfWeek === dayOfWeek);
+      if (!avail) continue;
+
+      const dateStr = d.toISOString().split("T")[0];
+      const [startH] = avail.startTime.split(":").map(Number);
+      const [endH] = avail.endTime.split(":").map(Number);
+      const slots: string[] = [];
+
+      for (let h = startH; h < endH; h++) {
+        const slotStart = new Date(d);
+        slotStart.setHours(h, 0, 0, 0);
+        const slotEnd = new Date(d);
+        slotEnd.setHours(h + 1, 0, 0, 0);
+
+        if (slotStart <= now) continue;
+
+        const hasConflict = existingVisits.some((v) => {
+          const vStart = new Date(v.date);
+          const vEnd = v.endDate ? new Date(v.endDate) : new Date(vStart.getTime() + 3600000);
+          return slotStart < vEnd && slotEnd > vStart;
+        });
+
+        if (!hasConflict) {
+          slots.push(`${String(h).padStart(2, "0")}:00`);
+        }
+      }
+
+      if (slots.length > 0) {
+        result.push({ date: dateStr, day: DAY_NAMES[dayOfWeek], slots });
+      }
+    }
+
+    return result;
   }
 }

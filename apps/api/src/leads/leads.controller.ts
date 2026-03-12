@@ -121,11 +121,16 @@ export class LeadsController {
   toggleAi(
     @TenantId() tenantId: string,
     @Param("id") id: string,
-    @Body() body: { active: boolean; instruction?: string },
+    @Body() body: { active: boolean; instruction?: string; demoMode?: boolean; demoPhone?: string; goal?: string },
   ) {
     return this.leadsService.update(tenantId, id, {
       aiConversationActive: body.active,
       ...(body.instruction !== undefined && { aiInstruction: body.instruction }),
+      ...(body.demoMode !== undefined && { aiDemoMode: body.demoMode }),
+      ...(body.demoPhone !== undefined && { aiDemoPhone: body.demoPhone }),
+      ...(body.goal !== undefined && { aiGoal: body.goal }),
+      // When deactivating AI, also turn off demo mode and clear goal
+      ...(!body.active && { aiDemoMode: false, aiDemoPhone: null, aiGoal: null }),
     });
   }
 

@@ -222,6 +222,9 @@ export default function VisitsPage() {
                         className={`p-1.5 rounded-lg cursor-pointer text-xs ${STATUS_COLORS[v.status] ?? "bg-gray-100"} hover:opacity-80`}>
                         <div className="flex items-center gap-1 font-medium">
                           <Icon className="h-3 w-3" /> {formatTime(v.date)}
+                          {v.createdByAi && (
+                            <span className="ml-auto text-[9px] bg-purple-200 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 px-1 rounded">IA</span>
+                          )}
                         </div>
                         <p className="truncate mt-0.5">{v.lead?.name ?? "Sin nombre"}</p>
                         {v.property && <p className="truncate opacity-75">{v.property.title}</p>}

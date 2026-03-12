@@ -538,12 +538,13 @@ export class RuleEngineService {
 
     // ── Activate AI conversation mode on the lead ──
     // This keeps the AI responding to every subsequent inbound message
-    // until a human agent takes over or deactivates it manually.
+    // until a human agent takes over, deactivates it manually, or the AI achieves its goal.
     await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         aiConversationActive: true,
         aiInstruction: instruction,
+        aiGoal: (action as Record<string, unknown>).goal as string ?? null,
         aiRuleId: null, // will be set in executeSingleRule if needed
       },
     });
@@ -612,6 +613,23 @@ export class RuleEngineService {
       return false;
     }
 
+    // Check for AI conversation markers
+    const GOAL_MARKER = "[META_CUMPLIDA]";
+    const NOT_INTERESTED_MARKER = "[LEAD_NO_INTERESADO]";
+    const STAGE_REGEX = /\[ETAPA:(QUALIFIED|NEGOTIATION|VISIT)\]/i;
+    const APPOINTMENT_REGEX = /\[CITA:(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\]/i;
+    const goalAchieved = aiResult.content.includes(GOAL_MARKER);
+    const notInterested = aiResult.content.includes(NOT_INTERESTED_MARKER);
+    const stageMatch = aiResult.content.match(STAGE_REGEX);
+    const newStage = stageMatch ? stageMatch[1].toUpperCase() : null;
+    const appointmentMatch = aiResult.content.match(APPOINTMENT_REGEX);
+    const cleanContent = aiResult.content
+      .replace(GOAL_MARKER, "")
+      .replace(NOT_INTERESTED_MARKER, "")
+      .replace(STAGE_REGEX, "")
+      .replace(APPOINTMENT_REGEX, "")
+      .trim();
+
     // Save and send through the agent's WhatsApp
     const msg = await this.prisma.message.create({
       data: {
@@ -619,11 +637,15 @@ export class RuleEngineService {
         leadId,
         direction: "OUT",
         channel,
-        content: aiResult.content,
+        content: cleanContent,
         status: "queued",
         rawPayload: {
           aiGenerated: true,
           aiAutoReply: true,
+          aiDemoMode: !!lead.aiDemoMode,
+          aiGoalAchieved: goalAchieved,
+          aiNotInterested: notInterested,
+          ...(newStage && { aiStageAdvanced: newStage }),
           instruction,
           provider: aiResult.provider,
           model: aiResult.model,
@@ -634,8 +656,155 @@ export class RuleEngineService {
     await this.messageSender.sendQueuedMessage(msg.id);
 
     this.logger.log(
-      `AI auto-reply sent for lead ${leadId}: "${aiResult.content.slice(0, 60)}…" (${aiResult.provider}/${aiResult.model})`,
+      `AI auto-reply sent for lead ${leadId}: "${cleanContent.slice(0, 60)}…" (${aiResult.provider}/${aiResult.model})`,
     );
+
+    // If goal was achieved, auto-deactivate AI and notify the agent
+    if (goalAchieved) {
+      this.logger.log(`🎯 AI GOAL ACHIEVED for lead ${leadId}: "${lead.aiGoal}"`);
+
+      await this.deactivateAiConversation(tenantId, leadId, `goal_achieved: ${lead.aiGoal ?? "meta cumplida"}`);
+
+      // Notify the assigned agent
+      if (lead.assigneeId) {
+        await this.prisma.notification.create({
+          data: {
+            tenantId,
+            userId: lead.assigneeId,
+            type: "rule",
+            title: "🎯 IA completó su meta",
+            message: `La IA logró "${lead.aiGoal ?? "su objetivo"}" con el lead ${lead.name ?? "sin nombre"}. La conversación IA fue desactivada automáticamente.`,
+            entity: "Lead",
+            entityId: leadId,
+          },
+        });
+      }
+
+      // Advance lead status to VISIT if it's in an earlier stage
+      const visitStages: string[] = ["NEW", "CONTACTED", "QUALIFIED"];
+      if (visitStages.includes(lead.status)) {
+        await this.prisma.lead.update({
+          where: { id: leadId },
+          data: { status: "VISIT" },
+        });
+        this.logger.log(`Lead ${leadId} status advanced to VISIT after AI goal achieved`);
+      }
+    }
+
+    // If lead is not interested, auto-deactivate AI and mark as LOST
+    if (notInterested) {
+      this.logger.log(`❌ LEAD NOT INTERESTED for lead ${leadId}`);
+
+      await this.deactivateAiConversation(tenantId, leadId, "lead_not_interested");
+
+      // Notify the assigned agent
+      if (lead.assigneeId) {
+        await this.prisma.notification.create({
+          data: {
+            tenantId,
+            userId: lead.assigneeId,
+            type: "rule",
+            title: "❌ Lead no interesado",
+            message: `El lead ${lead.name ?? "sin nombre"} indicó que no está interesado. La IA se despidió amablemente y fue desactivada.`,
+            entity: "Lead",
+            entityId: leadId,
+          },
+        });
+      }
+
+      // Mark lead as LOST
+      const lostableStages: string[] = ["NEW", "CONTACTED", "QUALIFIED"];
+      if (lostableStages.includes(lead.status)) {
+        await this.prisma.lead.update({
+          where: { id: leadId },
+          data: { status: "LOST" },
+        });
+        this.logger.log(`Lead ${leadId} status changed to LOST — not interested`);
+      }
+    }
+
+    // If AI detected a stage progression (and no goal/lost already handled it)
+    if (newStage && !goalAchieved && !notInterested) {
+      const STAGE_ORDER: Record<string, number> = {
+        NEW: 0, CONTACTED: 1, QUALIFIED: 2, NEGOTIATION: 3, VISIT: 4, WON: 5, LOST: 6,
+      };
+      const currentOrder = STAGE_ORDER[lead.status] ?? 0;
+      const targetOrder = STAGE_ORDER[newStage] ?? 0;
+
+      // Only advance forward, never regress
+      if (targetOrder > currentOrder) {
+        await this.prisma.lead.update({
+          where: { id: leadId },
+          data: { status: newStage as any },
+        });
+
+        const STAGE_LABELS: Record<string, string> = {
+          QUALIFIED: "Calificado",
+          NEGOTIATION: "Negociación",
+          VISIT: "Visita",
+        };
+
+        this.logger.log(`Lead ${leadId} advanced: ${lead.status} → ${newStage}`);
+
+        // Notify agent of stage change
+        if (lead.assigneeId) {
+          await this.prisma.notification.create({
+            data: {
+              tenantId,
+              userId: lead.assigneeId,
+              type: "rule",
+              title: `📊 Lead avanzó a ${STAGE_LABELS[newStage] ?? newStage}`,
+              message: `La IA avanzó al lead ${lead.name ?? "sin nombre"} de ${STAGE_LABELS[lead.status] ?? lead.status} a ${STAGE_LABELS[newStage] ?? newStage} basándose en la conversación.`,
+              entity: "Lead",
+              entityId: leadId,
+            },
+          });
+        }
+      }
+    }
+
+    // If AI confirmed an appointment, create a Visit record
+    if (appointmentMatch) {
+      const [, dateStr, timeStr] = appointmentMatch;
+      try {
+        const appointmentDate = new Date(`${dateStr}T${timeStr}:00`);
+        const appointmentEnd = new Date(appointmentDate.getTime() + 3600000); // +1 hour
+
+        if (!isNaN(appointmentDate.getTime())) {
+          const visit = await this.prisma.visit.create({
+            data: {
+              tenantId,
+              leadId,
+              agentId: lead.assigneeId ?? undefined,
+              date: appointmentDate,
+              endDate: appointmentEnd,
+              status: "SCHEDULED",
+              notes: `Cita agendada automáticamente por IA. Lead: ${lead.name ?? "sin nombre"}`,
+              createdByAi: true,
+            },
+          });
+
+          this.logger.log(`📅 AI created appointment for lead ${leadId}: ${dateStr} ${timeStr} (visit ${visit.id})`);
+
+          // Notify the agent
+          if (lead.assigneeId) {
+            await this.prisma.notification.create({
+              data: {
+                tenantId,
+                userId: lead.assigneeId,
+                type: "rule",
+                title: "📅 Nueva cita agendada por IA",
+                message: `La IA agendó una visita con ${lead.name ?? "sin nombre"} para el ${dateStr} a las ${timeStr}.`,
+                entity: "Lead",
+                entityId: leadId,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to create AI appointment for lead ${leadId}: ${err}`);
+      }
+    }
 
     return true;
   }

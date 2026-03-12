@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { getProfile, updateProfile, ApiError, api, NotificationPreference } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { User, Shield, Building2, Mail, Calendar, Save, Eye, EyeOff, Bell, BellOff } from "lucide-react";
+import { User, Shield, Building2, Mail, Calendar, Save, Eye, EyeOff, Bell, BellOff, Clock, ChevronRight } from "lucide-react";
 import { PageHeader, PageLoader, useToast } from "@/components/ui";
+import Link from "next/link";
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Super Admin",
@@ -201,6 +202,23 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Availability shortcut */}
+        <Link
+          href="/dashboard/profile/availability"
+          className="card p-5 flex items-center justify-between group hover:border-brand-300 dark:hover:border-brand-700 transition"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-brand-50 dark:bg-brand-900/20 rounded-lg">
+              <Clock className="w-5 h-5 text-brand-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Mi disponibilidad</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Configurá tus horarios para que la IA agende citas automáticamente</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-brand-500 transition" />
+        </Link>
 
         {/* Password section */}
         <div className="card p-6 space-y-4">
