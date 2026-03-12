@@ -1015,6 +1015,12 @@ export const api = {
       { token, method: "POST", body: JSON.stringify({ message, history }) },
     );
   },
+  getLeadAiSummary(token: string, leadId: string) {
+    return apiFetch<{ summary: string; provider: string; model: string; leadName: string }>(
+      `/ai/lead-summary/${leadId}`,
+      { token, method: "POST" },
+    );
+  },
 
   // ─── Plan ─────────────────────────────────────────
   getPlanLimits(token: string) {

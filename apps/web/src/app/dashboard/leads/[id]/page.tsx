@@ -5,7 +5,7 @@ import { api, type Lead, type EventLogEntry, type User, type Tag, type LeadTag, 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MessageSquare, Pencil, Trash2, Phone, Mail, Radio, Globe, Clock, User as UserIcon, Layers, Tag as TagIcon, Settings2, X, Plus, Flame, RefreshCw } from "lucide-react";
+import { ArrowLeft, MessageSquare, Pencil, Trash2, Phone, Mail, Radio, Globe, Clock, User as UserIcon, Layers, Tag as TagIcon, Settings2, X, Plus, Flame, RefreshCw, Sparkles, Loader2 } from "lucide-react";
 import { StatusBadge, PageLoader, useToast, useConfirm } from "@/components/ui";
 
 const ALL_STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "VISIT", "NEGOTIATION", "WON", "LOST"];
@@ -44,6 +44,10 @@ export default function LeadDetailPage() {
   // Lead Scoring
   const [scoring, setScoring] = useState<ScoringBreakdown | null>(null);
   const [scoringLoading, setScoringLoading] = useState(false);
+
+  // AI Summary
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
 
   const loadLead = useCallback(async () => {
     if (!token) return;
@@ -315,6 +319,44 @@ export default function LeadDetailPage() {
             <div className="card p-6">
               <h2 className="font-semibold text-gray-900 dark:text-white mb-2">Notas</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{lead.notes}</p>
+            </div>
+          )}
+
+          {/* AI Summary */}
+          {!editing && (
+            <div className="card p-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-500" /> Resumen IA
+                </h2>
+                <button
+                  onClick={async () => {
+                    if (!token) return;
+                    setAiSummaryLoading(true);
+                    try {
+                      const res = await api.getLeadAiSummary(token, leadId);
+                      setAiSummary(res.summary);
+                    } catch {
+                      toast.error("No se pudo generar el resumen IA. Verifica que la IA esté configurada.");
+                    }
+                    setAiSummaryLoading(false);
+                  }}
+                  disabled={aiSummaryLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 transition disabled:opacity-50"
+                >
+                  {aiSummaryLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {aiSummaryLoading ? "Analizando..." : aiSummary ? "Regenerar" : "Generar resumen"}
+                </button>
+              </div>
+              {aiSummary ? (
+                <div className="prose prose-sm dark:prose-invert max-w-none text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                  {aiSummary}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 dark:text-gray-500">
+                  Genera un resumen inteligente de este lead con análisis de sentimiento, estado y próximos pasos recomendados.
+                </p>
+              )}
             </div>
           )}
 

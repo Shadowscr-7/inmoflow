@@ -11,6 +11,8 @@ import { QueueDrainScheduler } from "./services/queue-drain.scheduler";
 import { AppointmentReminderScheduler } from "./services/appointment-reminder.scheduler";
 import { AiAgentService } from "./services/ai-agent.service";
 import { MessageSenderService } from "./services/message-sender.service";
+import { FollowUpScheduler } from "./services/follow-up.scheduler";
+import { LeadScoringService } from "./services/lead-scoring.service";
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { MessageSenderService } from "./services/message-sender.service";
     NoResponseScheduler,
     QueueDrainScheduler,
     AppointmentReminderScheduler,
+    FollowUpScheduler,
+    LeadScoringService,
     LeadProcessor,
     MessageProcessor,
     WorkflowProcessor,

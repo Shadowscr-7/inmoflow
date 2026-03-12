@@ -2,12 +2,16 @@ import { Processor, WorkerHost } from "@nestjs/bullmq";
 import { Logger } from "@nestjs/common";
 import { Job } from "bullmq";
 import { RuleEngineService } from "../services/rule-engine.service";
+import { LeadScoringService } from "../services/lead-scoring.service";
 
 @Processor("lead")
 export class LeadProcessor extends WorkerHost {
   private readonly logger = new Logger(LeadProcessor.name);
 
-  constructor(private readonly ruleEngine: RuleEngineService) {
+  constructor(
+    private readonly ruleEngine: RuleEngineService,
+    private readonly scoring: LeadScoringService,
+  ) {
     super();
   }
 
@@ -51,6 +55,8 @@ export class LeadProcessor extends WorkerHost {
     this.logger.log(
       `Rules evaluated: ${result.rulesMatched} matched, ${result.actionsExecuted} actions`,
     );
+
+    await this.autoScore(tenantId as string, leadId as string);
   }
 
   private async handleLeadUpdated(data: Record<string, unknown>) {
@@ -84,6 +90,8 @@ export class LeadProcessor extends WorkerHost {
         );
       }
     }
+
+    await this.autoScore(tenantId as string, leadId as string);
   }
 
   private async handleStageChanged(data: Record<string, unknown>) {
@@ -136,5 +144,16 @@ export class LeadProcessor extends WorkerHost {
     this.logger.log(
       `lead.contacted rules: ${result.rulesMatched} matched, ${result.actionsExecuted} actions`,
     );
+
+    await this.autoScore(tenantId as string, leadId as string);
+  }
+
+  /** Re-score lead after every significant event */
+  private async autoScore(tenantId: string, leadId: string): Promise<void> {
+    try {
+      await this.scoring.scoreLead(leadId, tenantId);
+    } catch (err) {
+      this.logger.warn(`Auto-score failed for lead ${leadId}: ${(err as Error).message}`);
+    }
   }
 }
