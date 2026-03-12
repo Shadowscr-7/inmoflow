@@ -77,9 +77,11 @@ export class PropertiesController {
   addMedia(
     @TenantId() tenantId: string,
     @Param("id") propertyId: string,
-    @Body() body: { urls: string[] },
+    @Body() body: { urls?: string[]; items?: Array<{ url: string; kind?: string; thumbnailUrl?: string }> },
   ) {
-    return this.propertiesService.addMedia(tenantId, propertyId, body.urls);
+    // Support legacy { urls: [...] } or richer { items: [...] }
+    const items = body.items ?? (body.urls ?? []).map((url) => ({ url }));
+    return this.propertiesService.addMedia(tenantId, propertyId, items);
   }
 
   @Delete("media/:mediaId")

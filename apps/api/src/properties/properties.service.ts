@@ -161,7 +161,11 @@ export class PropertiesService {
 
   // ─── Media ──────────────────────────────────────
 
-  async addMedia(tenantId: string, propertyId: string, urls: string[]) {
+  async addMedia(
+    tenantId: string,
+    propertyId: string,
+    items: Array<{ url: string; kind?: string; thumbnailUrl?: string }>,
+  ) {
     const property = await this.prisma.property.findFirst({ where: { id: propertyId, tenantId } });
     if (!property) throw new NotFoundException("Property not found");
 
@@ -173,13 +177,33 @@ export class PropertiesService {
 
     let nextOrder = (maxOrder?.order ?? -1) + 1;
     const media = await Promise.all(
-      urls.map((url) =>
-        this.prisma.propertyMedia.create({
-          data: { tenantId, propertyId, url, order: nextOrder++ },
-        }),
-      ),
+      items.map((item) => {
+        const kind = item.kind ?? this.detectMediaKind(item.url);
+        const thumbnailUrl = item.thumbnailUrl ?? this.generateThumbnail(item.url, kind);
+        return this.prisma.propertyMedia.create({
+          data: { tenantId, propertyId, url: item.url, kind, thumbnailUrl, order: nextOrder++ },
+        });
+      }),
     );
     return media;
+  }
+
+  /** Detect media kind from URL */
+  private detectMediaKind(url: string): string {
+    const lower = url.toLowerCase();
+    if (lower.includes("youtube.com") || lower.includes("youtu.be")) return "youtube";
+    if (lower.includes("vimeo.com")) return "vimeo";
+    if (/\.(mp4|webm|mov|avi)(\?|$)/.test(lower)) return "video";
+    return "image";
+  }
+
+  /** Generate thumbnail URL for video platforms */
+  private generateThumbnail(url: string, kind: string): string | null {
+    if (kind === "youtube") {
+      const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (match) return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
+    }
+    return null;
   }
 
   async removeMedia(tenantId: string, mediaId: string) {

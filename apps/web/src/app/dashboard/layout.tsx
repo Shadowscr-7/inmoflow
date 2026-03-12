@@ -37,6 +37,7 @@ import {
   Trophy,
   Wallet,
   Clock,
+  Store,
 } from "lucide-react";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -73,6 +74,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Rendimiento", href: "/dashboard/agent-performance", icon: Trophy, roles: ["ADMIN", "BUSINESS"] },
   { label: "Comisiones", href: "/dashboard/commissions", icon: Wallet, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Agente IA", href: "/dashboard/ai-agent", icon: Bot, roles: ["ADMIN", "BUSINESS"], minPlan: "PROFESSIONAL" },
+  { label: "MercadoLibre", href: "/dashboard/mercadolibre", icon: Store, roles: ["ADMIN", "BUSINESS"] },
   { label: "Usuarios", href: "/dashboard/settings", icon: Settings, roles: ["ADMIN", "BUSINESS"] },
   { label: "Mi perfil", href: "/dashboard/profile", icon: UserCircle },
 ];

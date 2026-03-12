@@ -423,16 +423,23 @@ export interface Property {
   price: number | null;
   currency: string | null;
   propertyType: string | null;
+  operationType: string | null;
   bedrooms: number | null;
   bathrooms: number | null;
   areaM2: number | null;
+  floors: number | null;
   hasGarage: boolean | null;
   zone: string | null;
   address: string | null;
   lat: number | null;
   lng: number | null;
   slug: string;
+  amenities: string | null;
   publishedAt: string | null;
+  meliItemId: string | null;
+  meliPermalink: string | null;
+  meliSyncedAt: string | null;
+  meliStatus: string | null;
   createdAt: string;
   updatedAt: string;
   media?: PropertyMedia[];
@@ -442,8 +449,36 @@ export interface Property {
 export interface PropertyMedia {
   id: string;
   url: string;
-  kind: string | null;
+  kind: string;
+  thumbnailUrl: string | null;
   order: number;
+}
+
+// ─── MercadoLibre ─────────────────────────────────────
+
+export interface MeliStatus {
+  connected: boolean;
+  userId: string | null;
+  lastSync: string | null;
+}
+
+export interface MeliItemPreview {
+  id: string;
+  title: string;
+  price: number | null;
+  currency: string | null;
+  permalink: string | null;
+  status: string | null;
+  thumbnail: string | null;
+  hasVideo: boolean;
+  pictureCount: number;
+}
+
+export interface MeliSyncResult {
+  total: number;
+  created: number;
+  updated: number;
+  errors: number;
 }
 
 export interface PropertiesResponse {
@@ -1054,6 +1089,35 @@ export const api = {
   },
   deleteProperty(token: string, id: string) {
     return apiFetch<void>(`/properties/${id}`, { token, method: "DELETE" });
+  },
+  addPropertyMedia(token: string, propertyId: string, items: Array<{ url: string; kind?: string; thumbnailUrl?: string }>) {
+    return apiFetch<PropertyMedia[]>(`/properties/${propertyId}/media`, { token, method: "POST", body: JSON.stringify({ items }) });
+  },
+  removePropertyMedia(token: string, mediaId: string) {
+    return apiFetch<void>(`/properties/media/${mediaId}`, { token, method: "DELETE" });
+  },
+
+  // ─── MercadoLibre ─────────────────────────────────
+  getMeliConfigured(token: string) {
+    return apiFetch<{ configured: boolean }>("/meli/configured", { token });
+  },
+  getMeliAuthUrl(token: string) {
+    return apiFetch<{ url: string }>("/meli/auth-url", { token });
+  },
+  handleMeliCallback(token: string, code: string) {
+    return apiFetch<{ ok: boolean }>(`/meli/callback?code=${encodeURIComponent(code)}`, { token });
+  },
+  getMeliStatus(token: string) {
+    return apiFetch<MeliStatus>("/meli/status", { token });
+  },
+  getMeliItems(token: string) {
+    return apiFetch<{ items: MeliItemPreview[]; total: number }>("/meli/items", { token });
+  },
+  syncMeli(token: string) {
+    return apiFetch<MeliSyncResult>("/meli/sync", { token, method: "POST" });
+  },
+  disconnectMeli(token: string) {
+    return apiFetch<{ ok: boolean }>("/meli", { token, method: "DELETE" });
   },
 
   // ─── Visits ───────────────────────────────────────

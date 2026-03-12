@@ -29,6 +29,10 @@ export class CreatePropertyDto {
   propertyType?: string;
 
   @IsOptional()
+  @IsString()
+  operationType?: string;
+
+  @IsOptional()
   @IsInt()
   bedrooms?: number;
 
@@ -41,6 +45,10 @@ export class CreatePropertyDto {
   areaM2?: number;
 
   @IsOptional()
+  @IsInt()
+  floors?: number;
+
+  @IsOptional()
   @IsBoolean()
   hasGarage?: boolean;
 
@@ -51,6 +59,10 @@ export class CreatePropertyDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  @IsString()
+  amenities?: string;
 
   @IsOptional()
   @IsNumber()
@@ -91,6 +103,10 @@ export class UpdatePropertyDto {
   propertyType?: string;
 
   @IsOptional()
+  @IsString()
+  operationType?: string;
+
+  @IsOptional()
   @IsInt()
   bedrooms?: number;
 
@@ -103,6 +119,10 @@ export class UpdatePropertyDto {
   areaM2?: number;
 
   @IsOptional()
+  @IsInt()
+  floors?: number;
+
+  @IsOptional()
   @IsBoolean()
   hasGarage?: boolean;
 
@@ -113,6 +133,10 @@ export class UpdatePropertyDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  @IsString()
+  amenities?: string;
 
   @IsOptional()
   @IsNumber()

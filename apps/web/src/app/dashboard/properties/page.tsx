@@ -1,10 +1,11 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
-import { api, Property, WhatsAppShare, API_URL } from "@/lib/api";
+import { api, Property, PropertyMedia, WhatsAppShare, API_URL } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import {
   Building2, Plus, Search, X, Edit2, Trash2, MapPin, BedDouble, Bath, Car, Ruler, DollarSign, Eye, QrCode, Share2, ExternalLink,
+  Image as ImageIcon, Video, Link2, Loader2, GripVertical,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -50,6 +51,9 @@ export default function PropertiesPage() {
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [media, setMedia] = useState<PropertyMedia[]>([]);
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [addingMedia, setAddingMedia] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -70,6 +74,8 @@ export default function PropertiesPage() {
   const openCreate = () => {
     setEditing(null);
     setForm({ status: "ACTIVE", currency: "USD" });
+    setMedia([]);
+    setMediaUrl("");
     setShowModal(true);
   };
 
@@ -81,7 +87,43 @@ export default function PropertiesPage() {
       bedrooms: p.bedrooms ?? "", bathrooms: p.bathrooms ?? "", areaM2: p.areaM2 ?? "",
       hasGarage: p.hasGarage ?? false, zone: p.zone ?? "", address: p.address ?? "",
     });
+    setMedia(p.media ?? []);
+    setMediaUrl("");
     setShowModal(true);
+  };
+
+  // Reload property to get fresh media
+  const reloadPropertyMedia = async (propertyId: string) => {
+    if (!token) return;
+    try {
+      const p = await api.getProperty(token, propertyId);
+      setMedia(p.media ?? []);
+    } catch { /* ignore */ }
+  };
+
+  const handleAddMedia = async () => {
+    if (!token || !editing || !mediaUrl.trim()) return;
+    setAddingMedia(true);
+    try {
+      await api.addPropertyMedia(token, editing.id, [{ url: mediaUrl.trim() }]);
+      setMediaUrl("");
+      await reloadPropertyMedia(editing.id);
+      toast.success("Media agregada");
+    } catch {
+      toast.error("Error al agregar media");
+    }
+    setAddingMedia(false);
+  };
+
+  const handleRemoveMedia = async (mediaId: string) => {
+    if (!token || !editing) return;
+    try {
+      await api.removePropertyMedia(token, mediaId);
+      setMedia((prev) => prev.filter((m) => m.id !== mediaId));
+      toast.success("Media eliminada");
+    } catch {
+      toast.error("Error al eliminar media");
+    }
   };
 
   const handleSave = async () => {
@@ -179,6 +221,14 @@ export default function PropertiesPage() {
                 )}
                 <div className="absolute top-2 right-2">{getStatusBadge(p.status)}</div>
                 {p.code && <span className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">{p.code}</span>}
+                {p.media && p.media.length > 1 && (
+                  <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded flex items-center gap-1">
+                    <ImageIcon className="h-3 w-3" /> {p.media.length}
+                    {p.media.some((m) => m.kind === "youtube" || m.kind === "vimeo" || m.kind === "video") && (
+                      <><span className="mx-0.5">·</span><Video className="h-3 w-3" /></>
+                    )}
+                  </span>
+                )}
               </div>
               <div className="p-4 space-y-2">
                 <h3 className="font-semibold text-gray-900 dark:text-white truncate">{p.title}</h3>
@@ -222,6 +272,51 @@ export default function PropertiesPage() {
                 <button onClick={() => setViewing(null)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
               </div>
               {getStatusBadge(viewing.status)}
+
+              {/* Media gallery */}
+              {viewing.media && viewing.media.length > 0 && (
+                <div className="space-y-2">
+                  <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700" style={{ maxHeight: "300px" }}>
+                    {(() => {
+                      const first = viewing.media![0];
+                      if (first.kind === "youtube") {
+                        const match = first.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                        return match ? (
+                          <iframe
+                            src={`https://www.youtube.com/embed/${match[1]}`}
+                            className="w-full"
+                            style={{ height: "260px" }}
+                            allowFullScreen
+                          />
+                        ) : <img src={first.url} alt="" className="w-full h-full object-cover" />;
+                      }
+                      return <img src={first.url} alt={viewing.title} className="w-full object-cover" style={{ maxHeight: "300px" }} />;
+                    })()}
+                  </div>
+                  {viewing.media.length > 1 && (
+                    <div className="flex gap-1.5 overflow-x-auto pb-1">
+                      {viewing.media.map((m, i) => (
+                        <div key={m.id} className="relative h-14 w-14 flex-shrink-0 rounded border dark:border-gray-600 overflow-hidden bg-gray-100 dark:bg-gray-700">
+                          {m.kind === "youtube" || m.kind === "vimeo" ? (
+                            <>
+                              {m.thumbnailUrl ? (
+                                <img src={m.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex items-center justify-center h-full"><Video className="h-4 w-4 text-gray-400" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Video className="h-3 w-3 text-white drop-shadow" />
+                              </div>
+                            </>
+                          ) : (
+                            <img src={m.url} alt="" className="h-full w-full object-cover" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {viewing.description && <p className="text-sm text-gray-700 dark:text-gray-300">{viewing.description}</p>}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-gray-500">Precio:</span> <span className="font-medium dark:text-white">{formatPrice(viewing.price, viewing.currency)}</span></div>
@@ -233,6 +328,22 @@ export default function PropertiesPage() {
                 <div className="col-span-2"><span className="text-gray-500">Zona:</span> <span className="font-medium dark:text-white">{viewing.zone ?? "—"}</span></div>
                 <div className="col-span-2"><span className="text-gray-500">Dirección:</span> <span className="font-medium dark:text-white">{viewing.address ?? "—"}</span></div>
               </div>
+              {/* MercadoLibre info */}
+              {viewing.meliItemId && (
+                <div className="flex items-center gap-2 rounded-lg bg-yellow-50 p-2 text-xs dark:bg-yellow-900/20">
+                  <span className="font-medium text-yellow-700 dark:text-yellow-300">MercadoLibre:</span>
+                  {viewing.meliPermalink ? (
+                    <a href={viewing.meliPermalink} target="_blank" rel="noopener noreferrer" className="text-yellow-600 underline hover:text-yellow-800 dark:text-yellow-400">
+                      Ver publicación <ExternalLink className="inline h-3 w-3" />
+                    </a>
+                  ) : (
+                    <span className="text-yellow-600 dark:text-yellow-400">{viewing.meliItemId}</span>
+                  )}
+                  {viewing.meliSyncedAt && (
+                    <span className="text-gray-500 ml-auto">Sync: {new Date(viewing.meliSyncedAt).toLocaleString("es")}</span>
+                  )}
+                </div>
+              )}
               {/* QR + WhatsApp + Public Link */}
               <div className="flex flex-wrap gap-2 pt-2 border-t dark:border-gray-700">
                 <a
@@ -364,6 +475,84 @@ export default function PropertiesPage() {
                   </div>
                 </div>
               </div>
+
+              {/* ─── Media Section (only when editing) ────── */}
+              {editing && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4" /> Imágenes y videos
+                  </h3>
+
+                  {/* Add media by URL */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={mediaUrl}
+                      onChange={(e) => setMediaUrl(e.target.value)}
+                      placeholder="URL de imagen o video (YouTube, Vimeo, etc.)"
+                      className="flex-1 border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      onKeyDown={(e) => e.key === "Enter" && handleAddMedia()}
+                    />
+                    <button
+                      onClick={handleAddMedia}
+                      disabled={addingMedia || !mediaUrl.trim()}
+                      className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {addingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                      Agregar
+                    </button>
+                  </div>
+
+                  {/* Media grid */}
+                  {media.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {media.map((m) => (
+                        <div key={m.id} className="group relative rounded-lg overflow-hidden border dark:border-gray-600 bg-gray-100 dark:bg-gray-700 aspect-square">
+                          {m.kind === "youtube" || m.kind === "vimeo" ? (
+                            <>
+                              <img
+                                src={m.thumbnailUrl ?? ""}
+                                alt="Video thumbnail"
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="rounded-full bg-black/60 p-2">
+                                  <Video className="h-5 w-5 text-white" />
+                                </div>
+                              </div>
+                              <div className="absolute top-1 left-1">
+                                <span className="rounded bg-purple-600/90 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                                  {m.kind === "youtube" ? "YouTube" : "Vimeo"}
+                                </span>
+                              </div>
+                            </>
+                          ) : m.kind === "video" ? (
+                            <div className="flex items-center justify-center h-full">
+                              <Video className="h-8 w-8 text-gray-400" />
+                            </div>
+                          ) : (
+                            <img
+                              src={m.url}
+                              alt="Property media"
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                          <button
+                            onClick={() => handleRemoveMedia(m.id)}
+                            className="absolute top-1 right-1 rounded-full bg-red-600/90 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
+                      Sin imágenes ni videos. Agregá URLs de imágenes o videos de YouTube/Vimeo.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-3 border-t dark:border-gray-700">
                 <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancelar</button>

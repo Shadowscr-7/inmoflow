@@ -27,6 +27,9 @@ export const envSchema = z.object({
   FRONTEND_URL: z.string().url().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  MELI_CLIENT_ID: z.string().optional(),
+  MELI_CLIENT_SECRET: z.string().optional(),
+  MELI_REDIRECT_URI: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

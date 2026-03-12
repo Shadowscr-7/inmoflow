@@ -115,6 +115,12 @@ model Tenant {
   plan                 Plan     @default(STARTER)
   timezone             String   @default("America/Montevideo")
   metaUserAccessToken  String?  // Temporary: long-lived user token from OAuth
+  /// MercadoLibre OAuth
+  meliAccessToken      String?
+  meliRefreshToken     String?
+  meliUserId           String?  // MeLi numeric user ID
+  meliEnabled          Boolean  @default(false)
+  meliLastSync         DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -453,45 +459,55 @@ model AiConfig {
 // ─── PROPERTIES ───────────────────────────────────────
 
 model Property {
-  id           String    @id @default(uuid())
-  tenantId     String
-  code         String?
-  title        String
-  description  String?
-  status       String    @default("ACTIVE")
-  price        Int?
-  currency     String?
-  propertyType String?
-  bedrooms     Int?
-  bathrooms    Int?
-  areaM2       Int?
-  hasGarage    Boolean?
-  zone         String?
-  address      String?
-  lat          Float?
-  lng          Float?
-  slug         String
-  publishedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  tenantId       String
+  code           String?
+  title          String
+  description    String?
+  status         String    @default("ACTIVE")
+  price          Int?
+  currency       String?
+  propertyType   String?
+  operationType  String?   // "sale", "rent"
+  bedrooms       Int?
+  bathrooms      Int?
+  areaM2         Int?
+  hasGarage      Boolean?
+  zone           String?
+  address        String?
+  lat            Float?
+  lng            Float?
+  floors         Int?
+  amenities      String?   // JSON array of amenity strings
+  slug           String
+  publishedAt    DateTime?
+  /// MercadoLibre item integration
+  meliItemId     String?   // MeLi item ID (e.g. "MLU12345")
+  meliPermalink  String?   // MeLi public listing URL
+  meliSyncedAt   DateTime? // Last sync timestamp
+  meliStatus     String?   // MeLi status: "active", "paused", "closed"
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   media  PropertyMedia[]
   visits Visit[]
 
   @@unique([tenantId, slug])
+  @@unique([tenantId, meliItemId])
   @@index([tenantId, status])
   @@index([tenantId, zone])
   @@index([tenantId, price])
 }
 
 model PropertyMedia {
-  id         String @id @default(uuid())
-  tenantId   String
-  propertyId String
-  url        String
-  kind       String?
-  order      Int    @default(0)
+  id            String @id @default(uuid())
+  tenantId      String
+  propertyId    String
+  url           String
+  kind          String @default("image")  // "image", "video", "youtube"
+  thumbnailUrl  String?                   // For videos: thumbnail preview
+  order         Int    @default(0)
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)

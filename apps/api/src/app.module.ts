@@ -32,6 +32,7 @@ import { AgentPerformanceModule } from "./agent-performance/agent-performance.mo
 import { CommissionsModule } from "./commissions/commissions.module";
 import { QueuedActionsModule } from "./queued-actions/queued-actions.module";
 import { CalendarModule } from "./calendar/calendar.module";
+import { MeliModule } from "./meli/meli.module";
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { CalendarModule } from "./calendar/calendar.module";
     CommissionsModule,
     QueuedActionsModule,
     CalendarModule,
+    MeliModule,
     HealthModule,
   ],
   providers: [
