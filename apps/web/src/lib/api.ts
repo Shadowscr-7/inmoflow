@@ -837,6 +837,9 @@ export const api = {
   syncMessages(token: string, leadId: string) {
     return apiFetch<{ synced: number }>(`/messages/${leadId}/sync`, { token, method: "POST" });
   },
+  retryMessage(token: string, leadId: string, messageId: string) {
+    return apiFetch<{ queued: boolean }>(`/messages/${leadId}/${messageId}/retry`, { token, method: "POST" });
+  },
 
   // ─── Lead Sources ─────────────────────────────────
   getLeadSources(token: string, params?: Record<string, string>) {

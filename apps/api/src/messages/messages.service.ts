@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventLogService } from "../event-log/event-log.service";
 import { EvolutionProvider } from "../channels/providers/evolution.provider";
@@ -14,6 +16,7 @@ export class MessagesService {
     private readonly eventLog: EventLogService,
     private readonly evolution: EvolutionProvider,
     private readonly telegram: TelegramProvider,
+    @InjectQueue("message") private readonly messageQueue: Queue,
   ) {}
 
   /**
@@ -59,12 +62,22 @@ export class MessagesService {
       to = lead.whatsappFrom ?? lead.phone ?? undefined;
       if (!to) throw new BadRequestException("Lead has no WhatsApp number");
 
-      // Find WA channel — prefer the assigned agent's channel, fallback to any tenant channel
+      // Find WA channel — MUST use assigned agent's channel. Only fallback for unassigned leads.
       let waChannel = lead.assigneeId
         ? await this.prisma.channel.findFirst({
             where: { tenantId, userId: lead.assigneeId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
           })
         : null;
+      if (!waChannel && lead.assigneeId) {
+        // Assigned agent has no connected WA channel — fail instead of sending from wrong agent
+        const disconnected = await this.prisma.channel.findFirst({
+          where: { tenantId, userId: lead.assigneeId, type: "WHATSAPP" },
+        });
+        const reason = disconnected
+          ? `El canal WhatsApp del agente asignado está desconectado (estado: ${disconnected.status})`
+          : "El agente asignado no tiene un canal WhatsApp configurado";
+        throw new BadRequestException(reason);
+      }
       if (!waChannel) {
         waChannel = await this.prisma.channel.findFirst({
           where: { tenantId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
@@ -81,12 +94,16 @@ export class MessagesService {
       ) as { key?: { id?: string } };
       providerMessageId = result?.key?.id;
     } else if (channel === MessageChannel.TELEGRAM) {
-      // Find TG channel — prefer assigned agent's channel, fallback to any
+      // Find TG channel — MUST use assigned agent's channel. Only fallback for unassigned leads.
       let tgChannel = lead.assigneeId
         ? await this.prisma.channel.findFirst({
             where: { tenantId, userId: lead.assigneeId, type: "TELEGRAM", status: ChannelStatus.CONNECTED },
           })
         : null;
+      if (!tgChannel && lead.assigneeId) {
+        const reason = "El agente asignado no tiene un canal Telegram conectado";
+        throw new BadRequestException(reason);
+      }
       if (!tgChannel) {
         tgChannel = await this.prisma.channel.findFirst({
           where: { tenantId, type: "TELEGRAM", status: ChannelStatus.CONNECTED },
@@ -172,12 +189,17 @@ export class MessagesService {
     // Strip + prefix — WhatsApp JIDs use bare numbers
     const phone = rawPhone.replace(/^\+/, "");
 
-    // Find WA channel — prefer the assigned agent's channel, fallback to any tenant channel
+    // Find WA channel — MUST use assigned agent's channel. Only fallback for unassigned leads.
     let waChannel = lead.assigneeId
       ? await this.prisma.channel.findFirst({
           where: { tenantId, userId: lead.assigneeId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
         })
       : null;
+    if (!waChannel && lead.assigneeId) {
+      // Assigned agent has no connected WA channel — can't sync from wrong agent's channel
+      this.logger.warn(`syncInbound: assigned agent (${lead.assigneeId}) has no connected WA channel for lead ${leadId}`);
+      return { synced: 0 };
+    }
     if (!waChannel) {
       waChannel = await this.prisma.channel.findFirst({
         where: { tenantId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
@@ -258,5 +280,39 @@ export class MessagesService {
       this.logger.error(`syncInbound error: ${(err as Error).message}`);
       return { synced: 0 };
     }
+  }
+
+  /**
+   * Retry a failed message by re-queuing it for delivery.
+   */
+  async retryMessage(
+    tenantId: string,
+    leadId: string,
+    messageId: string,
+  ): Promise<{ queued: boolean }> {
+    const message = await this.prisma.message.findFirst({
+      where: { id: messageId, tenantId, leadId },
+    });
+
+    if (!message) throw new NotFoundException("Message not found");
+    if (message.status !== "failed") {
+      throw new BadRequestException("Solo se pueden reintentar mensajes fallidos");
+    }
+
+    // Reset status to queued
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: "queued", error: null },
+    });
+
+    // Queue for delivery via the worker
+    await this.messageQueue.add(
+      "message.retry",
+      { messageId, retryAttempt: 0 },
+      { delay: 1000 }, // small delay to let the status update settle
+    );
+
+    this.logger.log(`Message ${messageId} re-queued for retry`);
+    return { queued: true };
   }
 }

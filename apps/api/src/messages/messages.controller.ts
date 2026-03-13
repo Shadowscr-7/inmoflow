@@ -57,4 +57,16 @@ export class MessagesController {
   ) {
     return this.messagesService.syncInbound(tenantId, leadId);
   }
+
+  /**
+   * POST /messages/:leadId/:messageId/retry — retry sending a failed message
+   */
+  @Post(":leadId/:messageId/retry")
+  retry(
+    @TenantId() tenantId: string,
+    @Param("leadId") leadId: string,
+    @Param("messageId") messageId: string,
+  ) {
+    return this.messagesService.retryMessage(tenantId, leadId, messageId);
+  }
 }

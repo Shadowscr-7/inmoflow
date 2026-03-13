@@ -2,27 +2,41 @@ import { Processor, WorkerHost } from "@nestjs/bullmq";
 import { Logger } from "@nestjs/common";
 import { Job } from "bullmq";
 import { RuleEngineService } from "../services/rule-engine.service";
+import { MessageSenderService } from "../services/message-sender.service";
 
 @Processor("message")
 export class MessageProcessor extends WorkerHost {
   private readonly logger = new Logger(MessageProcessor.name);
 
-  constructor(private readonly ruleEngine: RuleEngineService) {
+  constructor(
+    private readonly ruleEngine: RuleEngineService,
+    private readonly messageSender: MessageSenderService,
+  ) {
     super();
   }
 
   async process(job: Job): Promise<void> {
     this.logger.log(
-      `Processing job ${job.name} [${job.id}] — tenant: ${job.data?.tenantId}`,
+      `Processing job ${job.name} [${job.id}]`,
     );
 
     switch (job.name) {
       case "message.inbound":
         await this.handleMessageInbound(job.data);
         break;
+      case "message.retry":
+        await this.handleMessageRetry(job.data);
+        break;
       default:
         this.logger.warn(`Unknown job name: ${job.name}`);
     }
+  }
+
+  private async handleMessageRetry(data: Record<string, unknown>) {
+    const { messageId, retryAttempt } = data as { messageId: string; retryAttempt: number };
+    this.logger.log(`Retrying message ${messageId} (attempt #${retryAttempt})`);
+    const sent = await this.messageSender.sendQueuedMessage(messageId, retryAttempt);
+    this.logger.log(`Message retry ${messageId}: ${sent ? "sent" : "failed"}`);
   }
 
   private async handleMessageInbound(data: Record<string, unknown>) {

@@ -1,4 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
 import { PrismaService } from "../prisma/prisma.service";
 import { ChannelStatus, MessageChannel } from "@inmoflow/db";
 
@@ -7,12 +9,18 @@ import { ChannelStatus, MessageChannel } from "@inmoflow/db";
  *
  * Determines which channel to use based on the lead's assigned agent,
  * falling back to any connected tenant channel.
+ * If the assigned agent's channel is unavailable, retries once after 3 minutes.
  *
  * Providers supported: WhatsApp (Evolution API), Telegram.
  */
 @Injectable()
 export class MessageSenderService {
   private readonly logger = new Logger(MessageSenderService.name);
+
+  /** Delay before retrying a message when the agent's channel is not available (ms) */
+  private readonly RETRY_DELAY_MS = 3 * 60 * 1000; // 3 minutes
+  /** Max retry attempts for agent-channel-unavailable errors */
+  private readonly MAX_CHANNEL_RETRIES = 1;
 
   // Evolution API settings
   private readonly evoBaseUrl: string;
@@ -21,7 +29,10 @@ export class MessageSenderService {
   // Telegram settings
   private readonly tgBotToken: string;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue("message") private readonly messageQueue: Queue,
+  ) {
     const raw = process.env.EVOLUTION_API_URL ?? "";
     this.evoBaseUrl = raw.replace(/\/+$/, "") || "http://localhost:8080";
     this.evoApiKey = process.env.EVOLUTION_API_KEY ?? "";
@@ -40,9 +51,10 @@ export class MessageSenderService {
 
   /**
    * Send a single queued message by ID.
+   * @param retryAttempt Current retry attempt (0 = first try, 1 = retry).
    * Returns true if sent successfully, false otherwise.
    */
-  async sendQueuedMessage(messageId: string): Promise<boolean> {
+  async sendQueuedMessage(messageId: string, retryAttempt = 0): Promise<boolean> {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: { lead: true },
@@ -67,9 +79,9 @@ export class MessageSenderService {
 
     try {
       if (message.channel === MessageChannel.WHATSAPP) {
-        return await this.sendWhatsApp(message.id, message.tenantId, lead, message.content);
+        return await this.sendWhatsApp(message.id, message.tenantId, lead, message.content, retryAttempt);
       } else if (message.channel === MessageChannel.TELEGRAM) {
-        return await this.sendTelegram(message.id, message.tenantId, lead, message.content);
+        return await this.sendTelegram(message.id, message.tenantId, lead, message.content, retryAttempt);
       } else {
         this.logger.debug(`Channel ${message.channel} does not support auto-send`);
         return false;
@@ -87,6 +99,7 @@ export class MessageSenderService {
     tenantId: string,
     lead: { assigneeId: string | null; whatsappFrom: string | null; phone: string | null; aiDemoMode?: boolean; aiDemoPhone?: string | null },
     content: string,
+    retryAttempt = 0,
   ): Promise<boolean> {
     // In AI demo mode, redirect messages to the test phone number
     const isDemoRedirect = !!(lead.aiDemoMode && lead.aiDemoPhone);
@@ -102,13 +115,40 @@ export class MessageSenderService {
       this.logger.log(`AI DEMO MODE: redirecting message ${messageId.slice(0, 8)} to test phone ${lead.aiDemoPhone}`);
     }
 
-    // Find channel — prefer assigned agent's channel, fallback to any
+    // Find channel — MUST use assigned agent's channel. Only fallback for unassigned leads.
     let channel = lead.assigneeId
       ? await this.prisma.channel.findFirst({
           where: { tenantId, userId: lead.assigneeId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
         })
       : null;
+    if (!channel && lead.assigneeId) {
+      // Assigned agent has no connected WhatsApp channel — check if one exists but disconnected
+      const disconnected = await this.prisma.channel.findFirst({
+        where: { tenantId, userId: lead.assigneeId, type: "WHATSAPP" },
+      });
+      const reason = disconnected
+        ? `Assigned agent's WhatsApp channel exists but is not connected (status: ${disconnected.status})`
+        : `Assigned agent (${lead.assigneeId}) has no WhatsApp channel configured`;
+
+      // Schedule a retry if we haven't exhausted attempts
+      if (retryAttempt < this.MAX_CHANNEL_RETRIES) {
+        this.logger.warn(
+          `Message ${messageId}: ${reason}. Scheduling retry #${retryAttempt + 1} in ${this.RETRY_DELAY_MS / 1000}s…`,
+        );
+        await this.messageQueue.add(
+          "message.retry",
+          { messageId, retryAttempt: retryAttempt + 1 },
+          { delay: this.RETRY_DELAY_MS },
+        );
+        return false;
+      }
+
+      this.logger.warn(`Message ${messageId}: ${reason}. No retries left — marking as failed.`);
+      await this.markFailed(messageId, reason);
+      return false;
+    }
     if (!channel) {
+      // No assignee — fallback to any connected tenant channel
       channel = await this.prisma.channel.findFirst({
         where: { tenantId, type: "WHATSAPP", status: ChannelStatus.CONNECTED },
       });
@@ -166,18 +206,39 @@ export class MessageSenderService {
     tenantId: string,
     lead: { assigneeId: string | null; telegramUserId: string | null },
     content: string,
+    retryAttempt = 0,
   ): Promise<boolean> {
     if (!this.tgBotToken) {
       await this.markFailed(messageId, "Telegram bot token not configured");
       return false;
     }
 
-    // Find channel — prefer assigned agent's channel, fallback to any
+    // Find channel — MUST use assigned agent's channel. Only fallback for unassigned leads.
     let channel = lead.assigneeId
       ? await this.prisma.channel.findFirst({
           where: { tenantId, userId: lead.assigneeId, type: "TELEGRAM", status: ChannelStatus.CONNECTED },
         })
       : null;
+    if (!channel && lead.assigneeId) {
+      const reason = `Assigned agent (${lead.assigneeId}) has no connected Telegram channel`;
+
+      // Schedule a retry if we haven't exhausted attempts
+      if (retryAttempt < this.MAX_CHANNEL_RETRIES) {
+        this.logger.warn(
+          `Message ${messageId}: ${reason}. Scheduling retry #${retryAttempt + 1} in ${this.RETRY_DELAY_MS / 1000}s…`,
+        );
+        await this.messageQueue.add(
+          "message.retry",
+          { messageId, retryAttempt: retryAttempt + 1 },
+          { delay: this.RETRY_DELAY_MS },
+        );
+        return false;
+      }
+
+      this.logger.warn(`Message ${messageId}: ${reason}. No retries left — marking as failed.`);
+      await this.markFailed(messageId, reason);
+      return false;
+    }
     if (!channel) {
       channel = await this.prisma.channel.findFirst({
         where: { tenantId, type: "TELEGRAM", status: ChannelStatus.CONNECTED },
@@ -221,9 +282,49 @@ export class MessageSenderService {
   }
 
   private async markFailed(messageId: string, error: string) {
-    await this.prisma.message.update({
+    const message = await this.prisma.message.update({
       where: { id: messageId },
       data: { status: "failed", error },
+      include: { lead: { select: { id: true, name: true, assigneeId: true, tenantId: true } } },
     });
+
+    const lead = message.lead;
+    if (!lead) return;
+
+    // Log event for activity page
+    try {
+      await this.prisma.eventLog.create({
+        data: {
+          tenantId: lead.tenantId,
+          type: "provider_error",
+          entity: "Message",
+          entityId: messageId,
+          status: "error",
+          message: `Fallo al enviar mensaje a ${lead.name ?? "lead"}: ${error}`,
+          payload: { messageId, leadId: lead.id, error } as never,
+        },
+      });
+    } catch (e) {
+      this.logger.error(`Failed to log event for message ${messageId}: ${(e as Error).message}`);
+    }
+
+    // Create notification for the assigned agent (or skip if unassigned)
+    if (lead.assigneeId) {
+      try {
+        await this.prisma.notification.create({
+          data: {
+            tenantId: lead.tenantId,
+            userId: lead.assigneeId,
+            type: "provider_error",
+            title: "Mensaje no enviado",
+            message: `No se pudo enviar el mensaje a ${lead.name ?? "lead"}: ${error}`,
+            entity: "lead",
+            entityId: lead.id,
+          },
+        });
+      } catch (e) {
+        this.logger.error(`Failed to create notification for message ${messageId}: ${(e as Error).message}`);
+      }
+    }
   }
 }

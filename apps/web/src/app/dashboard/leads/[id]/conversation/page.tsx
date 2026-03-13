@@ -5,7 +5,7 @@ import { api, type Message, type Lead } from "@/lib/api";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Send, MessageSquare, Smile, Bot, UserRound, FlaskConical } from "lucide-react";
+import { ArrowLeft, Send, MessageSquare, Smile, Bot, UserRound, FlaskConical, AlertCircle, RefreshCw } from "lucide-react";
 import { ChannelBadge, useToast } from "@/components/ui";
 
 export default function ConversationPage() {
@@ -18,6 +18,7 @@ export default function ConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [channel, setChannel] = useState<string>("");
   const [togglingAi, setTogglingAi] = useState(false);
   const [showAiSetup, setShowAiSetup] = useState(false);
@@ -141,6 +142,20 @@ export default function ConversationPage() {
       toast.error(`Error al enviar: ${(err as Error).message}`);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleRetry = async (messageId: string) => {
+    if (!token) return;
+    setRetrying(messageId);
+    try {
+      await api.retryMessage(token, leadId, messageId);
+      toast.success("Mensaje reencolado para reenvío");
+      setTimeout(() => loadMessages(), 2000);
+    } catch (err) {
+      toast.error(`Error al reintentar: ${(err as Error).message}`);
+    } finally {
+      setRetrying(null);
     }
   };
 
@@ -385,6 +400,7 @@ export default function ConversationPage() {
             const isGoalAchieved = !!raw.aiGoalAchieved;
             const isNotInterested = !!raw.aiNotInterested;
             const stageAdvanced = raw.aiStageAdvanced as string | undefined;
+            const isFailed = msg.status === "failed";
             return (
               <div
                 key={msg.id}
@@ -392,7 +408,9 @@ export default function ConversationPage() {
               >
                 <div
                   className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-                    msg.direction === "OUT"
+                    isFailed
+                      ? "bg-red-900/30 border border-red-500/40 text-white rounded-br-md"
+                      : msg.direction === "OUT"
                       ? isAi
                         ? isDemo
                           ? "bg-orange-500 text-white rounded-br-md"
@@ -444,9 +462,30 @@ export default function ConversationPage() {
                     <span>·</span>
                     <span>{new Date(msg.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}</span>
                     {msg.direction === "OUT" && msg.status && (
-                      <span>{msg.status === "sent" ? "✓" : msg.status}</span>
+                      <span
+                        className={msg.status === "failed" ? "text-red-400 font-medium" : ""}
+                      >
+                        {msg.status === "sent" ? "✓" : msg.status === "failed" ? "⚠ Fallido" : msg.status}
+                      </span>
                     )}
                   </div>
+                  {msg.status === "failed" && (
+                    <div className="mt-2 flex items-start gap-2 text-xs">
+                      <div className="flex items-center gap-1 text-red-400">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="break-all">{msg.error ?? "Error desconocido"}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRetry(msg.id)}
+                        disabled={retrying === msg.id}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 transition text-[11px] font-medium flex-shrink-0"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${retrying === msg.id ? "animate-spin" : ""}`} />
+                        Reintentar
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
