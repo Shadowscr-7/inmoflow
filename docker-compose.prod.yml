@@ -10,13 +10,18 @@
 #   - Red Docker compartida (ver TRAEFIK_NETWORK en .env)
 #
 # Uso:
-#   1. cp .env.production.example .env.production
-#   2. Editar .env.production con valores reales
-#   3. docker compose -f docker-compose.prod.yml --env-file .env.production --profile migrate up migrate
-#   4. docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#   1. cp .env.production.example .env
+#   2. Editar .env con valores reales
+#   3. docker compose -f docker-compose.prod.yml --profile migrate run --rm inmoflow-migrate
+#   4. docker compose -f docker-compose.prod.yml up -d
+#
+# Actualizar:
+#   sudo bash scripts/update.sh
 #
 # Backup manual:
-#   docker compose -f docker-compose.prod.yml --env-file .env.production --profile backup run backup
+#   docker compose -f docker-compose.prod.yml --profile backup run --rm inmoflow-backup
+#
+# ⚠  Docker Compose lee .env automáticamente. NO usar --env-file.
 # ═══════════════════════════════════════════════════════════════
 
 services:

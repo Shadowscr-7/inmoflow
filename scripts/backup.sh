@@ -17,7 +17,7 @@ APP_DIR=$(cd "$(dirname "$0")/.." && pwd)
 cd "$APP_DIR"
 
 COMPOSE_FILE="docker-compose.prod.yml"
-ENV_FILE=".env.prod"
+ENV_FILE=".env"
 BACKUP_DIR="${APP_DIR}/backups"
 RETENTION_DAYS=30
 

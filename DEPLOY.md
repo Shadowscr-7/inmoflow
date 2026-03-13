@@ -1,173 +1,244 @@
-# Despliegue de InmoFlow — srv1046281 (31.97.93.104)
+# Despliegue de InmoFlow — Guía definitiva
 
-## Tu servidor actual
+> **Servidor actual:** srv1046281 (31.97.93.104)
+> **Dominio:** crm.contacthouse.com.uy
+> **Directorio:** `/opt/inmoflow`
+> **Rama:** `dev`
 
-| Container | Imagen | Estado |
+---
+
+## Infraestructura existente en el servidor
+
+| Container | Imagen | Descripción |
 |---|---|---|
-| `root-traefik-1` | traefik:2.11 | Puertos 80/443/8080 |
-| `evolution_api` | evoapicloud/evolution-api:v2.3.7 | Puerto 8080 interno |
-| `root-n8n-1` | n8n:latest | Puerto 5678 interno |
-| `root-evolution-postgres-1` | postgres:16-alpine | Puerto 5432 interno |
-| `root-redis-1` | redis:7-alpine | Puerto 6379 interno |
+| `root-traefik-1` | traefik:2.11 | Reverse proxy, SSL, puertos 80/443 |
+| `evolution_api` | evolution-api:v2.3.7 | WhatsApp API |
+| `root-n8n-1` | n8n:latest | Automatizaciones |
+| `root-evolution-postgres-1` | postgres:16-alpine | BD de Evolution (NO InmoFlow) |
+| `root-redis-1` | redis:7-alpine | Redis de Evolution (NO InmoFlow) |
 
-**Configuracion Traefik detectada:**
-- Red: `root_proxy`
-- Entrypoints: `web` (:80), `websecure` (:443)
-- CertResolver: `mytlschallenge`
-- Redirección HTTP→HTTPS: global (automática)
-
-> **InmoFlow NO toca nada de lo anterior.** Crea sus propios PostgreSQL, Redis y servicios en una red aislada.
+**InmoFlow NO toca nada de lo anterior.** Tiene su propia BD, Redis y red aislada (`inmoflow`).
 
 ---
 
-## Paso 1 — DNS (ya hecho)
+## Archivo de entorno: `.env`
 
-```
-crm.contacthouse.com.uy  →  31.97.93.104  ✅
-```
+> **⚠ IMPORTANTE:** Docker Compose lee `.env` automáticamente del directorio actual.
+> El archivo correcto es `/opt/inmoflow/.env` (no `.env.production`, no `.env.prod`).
 
 ---
 
-## Paso 2 — Clonar repositorio desde GitHub
+## Instalación inicial (solo 1 vez)
+
+### 1. Clonar repositorio
 
 ```bash
-# Instalar git si no existe
-apt-get install -y git
-
-# Clonar rama prod
 cd /opt
-git clone -b prod https://github.com/Shadowscr-7/inmoflow.git
+git clone -b dev https://github.com/Shadowscr-7/inmoflow.git
 cd inmoflow
 ```
 
----
-
-## Paso 3 — Configurar variables de entorno
+### 2. Crear `.env`
 
 ```bash
-cd /opt/inmoflow
-cp .env.production.example .env.production
+cp .env.production.example .env
 ```
 
-**Generar contraseñas seguras y guardarlas de una vez:**
+Editar `.env` y completar:
+
 ```bash
-cat > /tmp/secrets.txt << 'EOF'
-DB_PASSWORD=$(openssl rand -base64 32)
-REDIS_PASSWORD=$(openssl rand -base64 32)
-JWT_SECRET=$(openssl rand -base64 64)
-EVOLUTION_WEBHOOK_SECRET=$(openssl rand -hex 32)
-EOF
-source /tmp/secrets.txt
-
-# Reemplazar en .env.production
-sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$DB_PASSWORD|" .env.production
-sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$REDIS_PASSWORD|" .env.production
-sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" .env.production
-sed -i "s|^EVOLUTION_WEBHOOK_SECRET=.*|EVOLUTION_WEBHOOK_SECRET=$EVOLUTION_WEBHOOK_SECRET|" .env.production
-
-# Limpiar
-rm /tmp/secrets.txt
-
-# Verificar que todo está configurado
-cat .env.production
+nano .env
 ```
 
-> Los valores de Traefik, dominio y Evolution API ya vienen correctos en el template.
+**Variables críticas que hay que generar:**
+```bash
+# Generar passwords seguras (SOLO caracteres alfanuméricos, sin +/=)
+openssl rand -base64 32 | tr -d '/+='   # → usar como DB_PASSWORD
+openssl rand -base64 32 | tr -d '/+='   # → usar como REDIS_PASSWORD
+openssl rand -base64 48 | tr -d '/+='   # → usar como JWT_SECRET
+```
 
----
+> **⚠ NUNCA usar passwords con caracteres especiales (`+`, `=`, `/`, `@`, `#`)**
+> porque se interpolan dentro de URLs como `postgresql://user:PASSWORD@host/db`
+> y causan errores P1000 de autenticación.
 
-## Paso 4 — Construir y desplegar
+### 3. Primer despliegue
 
 ```bash
 cd /opt/inmoflow
 
-# 1. Construir las imágenes Docker (~3-5 minutos)
-docker compose -f docker-compose.prod.yml --env-file .env.production build
+# Construir imágenes (~3-5 min)
+docker compose -f docker-compose.prod.yml build
 
-# 2. Iniciar base de datos y Redis primero
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d inmoflow-db inmoflow-redis
-
-# 3. Esperar a que estén healthy
+# Levantar DB y Redis primero
+docker compose -f docker-compose.prod.yml up -d inmoflow-db inmoflow-redis
 sleep 15
-docker compose -f docker-compose.prod.yml --env-file .env.production ps
-# Deben aparecer como "healthy"
 
-# 4. Ejecutar migraciones + seed (crea tablas + datos iniciales)
-docker compose -f docker-compose.prod.yml --env-file .env.production --profile migrate run --rm inmoflow-migrate
+# Verificar que estén healthy
+docker compose -f docker-compose.prod.yml ps
 
-# 5. Iniciar todos los servicios
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+# Ejecutar migraciones + seed
+docker compose -f docker-compose.prod.yml --profile migrate run --rm inmoflow-migrate
+
+# Levantar todo
+docker compose -f docker-compose.prod.yml up -d
 ```
 
----
-
-## Paso 5 — Verificar
+### 4. Verificar
 
 ```bash
-# Ver estado de todos los containers InmoFlow
-docker compose -f docker-compose.prod.yml --env-file .env.production ps
+# Estado de containers
+docker compose -f docker-compose.prod.yml ps
 
-# Healthcheck de la API
-docker exec inmoflow-api wget -qO- http://localhost:4000/api/health
-# Esperado: {"status":"ok","checks":{"database":"ok"}}
-
-# Ver que Traefik detectó los nuevos routers
-docker logs root-traefik-1 --tail 10
-
-# Probar HTTPS desde el servidor
+# API health
 curl -s https://crm.contacthouse.com.uy/api/health
 
-# Si algo falla, ver logs
-docker compose -f docker-compose.prod.yml --env-file .env.production logs -f --tail 50
+# Credenciales iniciales
+# admin@demoa.com / password123
 ```
-
-**Abrir en el navegador:** https://crm.contacthouse.com.uy
-
-**Credenciales iniciales:**
-- `admin@demoa.com` / `password123`
 
 ---
 
-## Tabla de NO conflictos
+## Actualizar (deploy repetible) ← USAR SIEMPRE
 
-| Recurso | Existente | InmoFlow | Conflicto |
-|---|---|---|---|
-| Puerto 80 | Traefik | NO expone (labels) | Sin conflicto |
-| Puerto 443 | Traefik | NO expone (labels) | Sin conflicto |
-| Puerto 8080 | Traefik dashboard | No lo usa | Sin conflicto |
-| Puerto 5432 | root-evolution-postgres-1 (interno) | inmoflow-db (interno) | Sin conflicto |
-| Puerto 6379 | root-redis-1 (interno) | inmoflow-redis (interno) | Sin conflicto |
-| Puerto 4000 | — | inmoflow-api (interno) | Sin conflicto |
-| Puerto 3000 | — | inmoflow-web (interno) | Sin conflicto |
-| Red Docker | root_proxy | inmoflow (aislada) | Sin conflicto |
-| Volúmenes | root_* | inmoflow_* | Sin conflicto |
-| Containers | root-*, evolution_api | inmoflow-* | Sin conflicto |
+### Opción A: Script automático (recomendado)
+
+```bash
+cd /opt/inmoflow
+sudo bash scripts/update.sh
+```
+
+**¿Qué hace el script?**
+1. `git pull origin dev` — baja el código nuevo
+2. Verifica que DB y Redis estén healthy (los levanta si no lo están)
+3. Auto-detecta si hay migraciones nuevas y las ejecuta
+4. `docker compose build` — reconstruye imágenes de api, worker, web
+5. `docker compose up -d --no-deps --force-recreate` — reinicia SOLO app (no toca DB/Redis)
+6. Verifica healthchecks
+7. Limpia imágenes Docker huérfanas
+
+**Opciones:**
+```bash
+sudo bash scripts/update.sh --no-pull    # Ya hiciste git pull manualmente
+sudo bash scripts/update.sh --migrate    # Forzar migraciones aunque no detecte cambios
+sudo bash scripts/update.sh --rebuild    # Build sin caché Docker (más lento)
+```
+
+### Opción B: Comandos manuales
+
+```bash
+cd /opt/inmoflow
+
+# 1. Bajar código
+git pull origin dev
+
+# 2. Reconstruir imágenes
+docker compose -f docker-compose.prod.yml build inmoflow-api inmoflow-worker inmoflow-web
+
+# 3. Si hay migraciones nuevas
+docker compose -f docker-compose.prod.yml --profile migrate run --rm inmoflow-migrate
+
+# 4. Reiniciar SOLO servicios de app (NO toca DB ni Redis)
+docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate inmoflow-api inmoflow-worker inmoflow-web
+
+# 5. Verificar
+docker compose -f docker-compose.prod.yml ps
+```
+
+---
+
+## ⛔ Lo que NUNCA hay que hacer
+
+### NUNCA `docker compose down` sin razón
+
+```bash
+# ❌ PELIGROSO — mata la base de datos y Redis
+docker compose -f docker-compose.prod.yml down
+
+# ❌ PELIGROSO — borra los volúmenes (PIERDES TODOS LOS DATOS)
+docker compose -f docker-compose.prod.yml down -v
+```
+
+**¿Por qué?**
+- `down` destruye TODOS los containers, incluyendo DB y Redis
+- Al volver a hacer `up`, PostgreSQL recrea el container con la password del `.env` actual
+- Si la password cambió (o tiene caracteres especiales), el volumen tiene la password vieja → error P1000
+- Redis pierde las colas BullMQ en progreso
+
+### Si NECESITAS reiniciar todo desde cero
+
+Solo si realmente hay que recrear DB+Redis (raro):
+
+```bash
+# 1. Backup primero
+docker compose -f docker-compose.prod.yml --profile backup run --rm inmoflow-backup
+
+# 2. Bajar todo
+docker compose -f docker-compose.prod.yml down
+
+# 3. Subir DB y Redis primero, esperar healthy
+docker compose -f docker-compose.prod.yml up -d inmoflow-db inmoflow-redis
+sleep 15
+docker compose -f docker-compose.prod.yml ps  # verificar healthy
+
+# 4. Migraciones (si es BD nueva)
+docker compose -f docker-compose.prod.yml --profile migrate run --rm inmoflow-migrate
+
+# 5. Subir app
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Si ya rompiste la password de la BD
+
+Si hiciste `down` y ahora da error P1000:
+
+```bash
+# 1. Ver qué password espera el volumen existente
+docker compose -f docker-compose.prod.yml up -d inmoflow-db
+docker exec -it inmoflow-db psql -U inmoflow -c "SELECT 1"
+# Si funciona → la password del volumen es la original
+
+# 2. Ajustar .env para que coincida con la password del volumen
+# O cambiar la password de postgres para que coincida con .env:
+docker exec -it inmoflow-db psql -U inmoflow -c "ALTER USER inmoflow WITH PASSWORD 'la-password-de-tu-env';"
+
+# 3. Reiniciar con --force-recreate para que lea las env vars nuevas
+docker compose -f docker-compose.prod.yml up -d --force-recreate
+```
 
 ---
 
 ## Comandos útiles
 
 ```bash
-# Crear alias (ejecutar 1 vez y añadir a ~/.bashrc)
-echo "alias iflow='docker compose -f /opt/inmoflow/docker-compose.prod.yml --env-file /opt/inmoflow/.env.production'" >> ~/.bashrc
+# ─── Alias (agregar a ~/.bashrc para no escribir todo el rato) ───
+echo "alias iflow='cd /opt/inmoflow && docker compose -f docker-compose.prod.yml'" >> ~/.bashrc
 source ~/.bashrc
 
-# Uso:
-iflow ps                    # Estado
-iflow logs -f               # Logs en vivo
-iflow logs inmoflow-api     # Logs solo API
-iflow restart inmoflow-api  # Reiniciar API
-iflow down                  # Parar todo
-iflow up -d                 # Levantar todo
-iflow up -d --build         # Rebuild + levantar
+# ─── Estado ──────────────────────────────────────────────────────
+iflow ps                                # Estado de containers
+iflow logs -f                           # Logs en vivo (todos)
+iflow logs -f inmoflow-api              # Logs solo API
+iflow logs -f inmoflow-worker           # Logs solo Worker
+iflow logs -f --tail 50                 # Últimas 50 líneas
 
-# Backup manual de BD
+# ─── Reiniciar un servicio (sin tocar DB/Redis) ─────────────────
+iflow up -d --no-deps --force-recreate inmoflow-api
+iflow up -d --no-deps --force-recreate inmoflow-worker
+iflow up -d --no-deps --force-recreate inmoflow-web
+
+# ─── Backup manual de BD ────────────────────────────────────────
 iflow --profile backup run --rm inmoflow-backup
+# Backups en: /opt/inmoflow/backups/
 
-# Actualizar aplicación (pull desde GitHub)
-cd /opt/inmoflow
-git pull origin prod
-iflow up -d --build
+# ─── Entrar a la BD ─────────────────────────────────────────────
+docker exec -it inmoflow-db psql -U inmoflow
+
+# ─── Entrar a Redis ─────────────────────────────────────────────
+docker exec -it inmoflow-redis redis-cli -a TU_REDIS_PASSWORD
+
+# ─── Ver uso de disco ───────────────────────────────────────────
+docker system df
 ```
 
 ---
@@ -176,78 +247,94 @@ iflow up -d --build
 
 ```
 Internet
-   |
-   v
-+-----------------------------+
-|  Traefik (existente)        |  Puertos 80/443
-|  root-traefik-1             |
-+----------+------------------+
-           |
-           |  Red: root_proxy (traefik_net)
-           |
-    +------+-------------------------+
-    |                                |
-    v                                v
-+--------------+          +--------------+
-| inmoflow-api |          | inmoflow-web |
-| :4000        |          | :3000        |
-| /api/* /ws   |          | /* (frontend)|
-+------+-------+          +------+-------+
-       |                         |
-       |   Red: inmoflow (priv)  |
-       |                         |
-  +----+---+----------+----------+
-  |        |          |
-  v        v          v
-+----+  +-----+  +--------+
-| DB |  |Redis|  | Worker |
-+----+  +-----+  +--------+
-
-===== Sin conexion con =====
-
-+-----------------------------+
-| Servicios existentes        |
-| evolution_api               |
-| root-n8n-1                  |
-| root-evolution-postgres-1   |
-| root-redis-1                |
-+-----------------------------+
+   │
+   ▼
+┌─────────────────────────────┐
+│  Traefik (existente)        │  :80 / :443
+│  root-traefik-1             │
+└──────────┬──────────────────┘
+           │
+           │  Red: root_proxy
+           │
+    ┌──────┴─────────────────────┐
+    │                            │
+    ▼                            ▼
+┌──────────────┐      ┌──────────────┐
+│ inmoflow-api │      │ inmoflow-web │
+│ :4000        │      │ :3000        │
+│ /api/* /ws   │      │ /* (Next.js) │
+└──────┬───────┘      └──────┬───────┘
+       │                     │
+       │   Red: inmoflow     │
+       │                     │
+  ┌────┴───┬──────┬──────────┘
+  │        │      │
+  ▼        ▼      ▼
+┌────┐  ┌─────┐  ┌────────┐
+│ DB │  │Redis│  │ Worker │
+└────┘  └─────┘  └────────┘
 ```
 
 ---
 
-## Solucion de problemas
+## Problemas comunes
+
+### Error P1000 (autenticación BD)
+
+**Causa:** La password del `.env` no coincide con la que tiene el volumen de PostgreSQL.
+
+```bash
+# Verificar qué password tiene el volumen
+docker exec -it inmoflow-db psql -U inmoflow -c "SELECT 1"
+
+# Si funciona pero la app no conecta, sincronizar password:
+docker exec -it inmoflow-db psql -U inmoflow -c "ALTER USER inmoflow WITH PASSWORD 'la-password-correcta';"
+docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate inmoflow-api inmoflow-worker
+```
 
 ### "network root_proxy not found"
+
 ```bash
-docker network ls
-# Si la red se llama diferente, actualizar TRAEFIK_NETWORK en .env.production
+docker network ls | grep proxy
+# Actualizar TRAEFIK_NETWORK en .env con el nombre correcto
 ```
 
-### "error getting credentials" o variables faltantes
-```bash
-grep -E '(DB_PASSWORD|REDIS_PASSWORD|JWT_SECRET|DOMAIN)' /opt/inmoflow/.env.production
-# Todos deben tener valor
-```
+### API no arranca / no responde
 
-### La API no arranca
 ```bash
 docker logs inmoflow-api --tail 50
 docker exec inmoflow-db pg_isready -U inmoflow
+docker exec inmoflow-redis redis-cli -a TU_PASSWORD ping
 ```
 
-### SSL no funciona
+### Worker no procesa mensajes
+
 ```bash
-# Verificar que Traefik detectó los routers
-docker logs root-traefik-1 --tail 30 2>&1 | grep inmoflow
-# Verificar DNS
-dig crm.contacthouse.com.uy +short
-# Debe devolver: 31.97.93.104
+docker logs inmoflow-worker --tail 50
+# Verificar que Redis esté accesible
+docker exec inmoflow-redis redis-cli -a TU_PASSWORD LLEN bull:message:wait
 ```
 
-### Containers existentes afectados
+### Quiero cambiar una variable de entorno
+
 ```bash
-# Verificar que todo sigue igual
-docker ps --format "table {{.Names}}\t{{.Status}}" | grep -v inmoflow
-# Deben verse los 5 containers originales healthy
+# 1. Editar .env
+nano /opt/inmoflow/.env
+
+# 2. Recrear el servicio afectado (docker restart NO relee env vars)
+docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate inmoflow-api
+
+# ⚠ NUNCA usar "docker compose restart" para aplicar cambios de env
+# restart reutiliza el container viejo con las env vars viejas
 ```
+
+---
+
+## Resumen rápido para deploy
+
+```bash
+cd /opt/inmoflow
+sudo bash scripts/update.sh
+```
+
+Eso es todo. El script hace todo lo necesario de forma segura.
