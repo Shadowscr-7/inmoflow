@@ -1,34 +1,20 @@
-FROM node:20-alpine AS base
+FROM node:20-alpine
 RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 WORKDIR /app
 
-# ─── Install + Build (single stage to keep pnpm symlinks intact) ───
-FROM base AS builder
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @inmoflow/db generate
 RUN pnpm --filter @inmoflow/db build
 RUN pnpm --filter @inmoflow/shared build
 RUN pnpm --filter @inmoflow/worker build
-# Dereference pnpm symlinks so COPY to runner works
-RUN cp -rL node_modules /tmp/node_modules_real
-
-# ─── Production ────────────────────────────────────────
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
+RUN pnpm prune --prod
 
 RUN addgroup --system --gid 1001 appgroup \
- && adduser --system --uid 1001 appuser --ingroup appgroup
+ && adduser --system --uid 1001 appuser --ingroup appgroup \
+ && chown -R appuser:appgroup /app
 
-COPY --from=builder --chown=appuser:appgroup /tmp/node_modules_real ./node_modules
-COPY --from=builder --chown=appuser:appgroup /app/apps/worker/dist ./apps/worker/dist
-COPY --from=builder --chown=appuser:appgroup /app/packages/db/dist ./packages/db/dist
-COPY --from=builder --chown=appuser:appgroup /app/packages/db/package.json ./packages/db/
-COPY --from=builder --chown=appuser:appgroup /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder --chown=appuser:appgroup /app/packages/shared/package.json ./packages/shared/
-COPY --from=builder --chown=appuser:appgroup /app/apps/worker/package.json ./apps/worker/
-
+ENV NODE_ENV=production
 USER appuser
 WORKDIR /app/apps/worker
 CMD ["node", "dist/main"]
