@@ -2,19 +2,10 @@ FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 WORKDIR /app
 
-# ─── Install dependencies ─────────────────────────────
-FROM base AS deps
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
-COPY apps/web/package.json ./apps/web/
-COPY packages/shared/package.json ./packages/shared/
-RUN pnpm install --frozen-lockfile
-
-# ─── Build ─────────────────────────────────────────────
+# ─── Install + Build ──────────────────────────────────
 FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY . .
+RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @inmoflow/shared build
 ENV NEXT_TELEMETRY_DISABLED=1
 # In production, NEXT_PUBLIC_API_URL="" means same-origin (nginx proxies /api → api:4000)
