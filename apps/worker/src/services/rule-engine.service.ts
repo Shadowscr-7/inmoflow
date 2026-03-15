@@ -292,9 +292,18 @@ export class RuleEngineService {
         if (cond.op && cond.value !== undefined) {
           const numCtx = Number(ctxVal);
           const numVal = Number(cond.value);
+          // Case-insensitive helpers for string comparisons
+          const strCtx = typeof ctxVal === "string" ? ctxVal.toLowerCase() : undefined;
+          const strVal = typeof cond.value === "string" ? cond.value.toLowerCase() : undefined;
           switch (cond.op) {
-            case "eq": if (ctxVal !== cond.value) return false; break;
-            case "neq": if (ctxVal === cond.value) return false; break;
+            case "eq":
+              if (strCtx !== undefined && strVal !== undefined) { if (strCtx !== strVal) return false; }
+              else { if (ctxVal !== cond.value) return false; }
+              break;
+            case "neq":
+              if (strCtx !== undefined && strVal !== undefined) { if (strCtx === strVal) return false; }
+              else { if (ctxVal === cond.value) return false; }
+              break;
             case "gt": if (numCtx <= numVal) return false; break;
             case "gte": if (numCtx < numVal) return false; break;
             case "lt": if (numCtx >= numVal) return false; break;
@@ -309,7 +318,11 @@ export class RuleEngineService {
       }
 
       if (Array.isArray(value)) {
-        if (!value.includes(ctxVal)) return false;
+        // Case-insensitive array match for strings
+        const ctxLower = typeof ctxVal === "string" ? ctxVal.toLowerCase() : ctxVal;
+        if (!value.some(v => (typeof v === "string" ? v.toLowerCase() : v) === ctxLower)) return false;
+      } else if (typeof ctxVal === "string" && typeof value === "string") {
+        if (ctxVal.toLowerCase() !== value.toLowerCase()) return false;
       } else if (ctxVal !== value) {
         return false;
       }

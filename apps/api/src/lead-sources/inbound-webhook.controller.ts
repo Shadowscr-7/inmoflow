@@ -211,6 +211,7 @@ export class InboundWebhookController {
     // Enqueue for async rule processing (same as any other lead)
     await this.eventProducer.emitLeadCreated(tenantId, lead.id, {
       sourceType: "WEBHOOK",
+      source: data.source,
       status,
       agent: agentValue,
       assigneeId,
