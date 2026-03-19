@@ -10,11 +10,12 @@ export class QueuedActionsService {
 
   async findAll(
     tenantId: string,
-    filters?: { status?: string; ruleId?: string },
+    filters?: { status?: string; ruleId?: string; assigneeId?: string },
   ) {
     const where: Prisma.QueuedActionWhereInput = { tenantId };
     if (filters?.status) where.status = filters.status;
     if (filters?.ruleId) where.ruleId = filters.ruleId;
+    if (filters?.assigneeId) where.assigneeId = filters.assigneeId;
 
     return this.prisma.queuedAction.findMany({
       where,
@@ -58,16 +59,16 @@ export class QueuedActionsService {
     });
   }
 
-  async countPending(tenantId: string) {
-    return this.prisma.queuedAction.count({
-      where: { tenantId, status: "pending" },
-    });
+  async countPending(tenantId: string, assigneeId?: string) {
+    const where: Prisma.QueuedActionWhereInput = { tenantId, status: "pending" };
+    if (assigneeId) where.assigneeId = assigneeId;
+    return this.prisma.queuedAction.count({ where });
   }
 
-  async cancel(tenantId: string, id: string) {
-    const item = await this.prisma.queuedAction.findFirst({
-      where: { id, tenantId },
-    });
+  async cancel(tenantId: string, id: string, assigneeId?: string) {
+    const where: Prisma.QueuedActionWhereInput = { id, tenantId };
+    if (assigneeId) where.assigneeId = assigneeId;
+    const item = await this.prisma.queuedAction.findFirst({ where });
     if (!item) throw new NotFoundException("Queued action not found");
     if (item.status !== "pending") {
       throw new NotFoundException("Only pending actions can be cancelled");
@@ -88,10 +89,10 @@ export class QueuedActionsService {
   }
 
   /** Retry a failed action by resetting it to pending */
-  async retry(tenantId: string, id: string) {
-    const item = await this.prisma.queuedAction.findFirst({
-      where: { id, tenantId },
-    });
+  async retry(tenantId: string, id: string, assigneeId?: string) {
+    const where: Prisma.QueuedActionWhereInput = { id, tenantId };
+    if (assigneeId) where.assigneeId = assigneeId;
+    const item = await this.prisma.queuedAction.findFirst({ where });
     if (!item) throw new NotFoundException("Queued action not found");
     if (item.status !== "failed") {
       throw new NotFoundException("Only failed actions can be retried");

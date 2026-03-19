@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventLogService } from "../event-log/event-log.service";
 import { EventType, MessageChannel, Prisma } from "@inmoflow/db";
@@ -153,8 +153,14 @@ export class TemplatesService {
     return template;
   }
 
-  async delete(tenantId: string, id: string) {
+  async delete(tenantId: string, id: string, userId?: string, userRole?: string) {
     const existing = await this.findById(tenantId, id);
+
+    // AGENT can only delete their own templates
+    if (userRole === "AGENT" && existing.userId !== userId) {
+      throw new ForbiddenException("No puedes eliminar plantillas que no te pertenecen");
+    }
+
     await this.prisma.template.delete({ where: { id: existing.id } });
 
     await this.eventLog.log({

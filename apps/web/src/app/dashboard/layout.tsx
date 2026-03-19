@@ -69,7 +69,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Canales", href: "/dashboard/channels", icon: Radio, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Plantillas", href: "/dashboard/templates", icon: FileText, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Automatizaciones", href: "/dashboard/rules", icon: Zap, roles: ["ADMIN", "BUSINESS", "AGENT"] },
-  { label: "Cola pendiente", href: "/dashboard/queued-actions", icon: Clock, roles: ["ADMIN", "BUSINESS"] },
+  { label: "Cola pendiente", href: "/dashboard/queued-actions", icon: Clock, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Importar", href: "/dashboard/import", icon: Upload, roles: ["ADMIN", "BUSINESS"] },
   { label: "Reportes", href: "/dashboard/reports", icon: BarChart3, roles: ["ADMIN", "BUSINESS"] },
   { label: "Mensajes", href: "/dashboard/messages", icon: MessageSquare, roles: ["ADMIN", "BUSINESS"] },

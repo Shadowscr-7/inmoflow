@@ -10,7 +10,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { JwtAuthGuard, TenantGuard, RolesGuard, Roles } from "../auth/guards";
-import { TenantId } from "../auth/decorators";
+import { TenantId, CurrentUser } from "../auth/decorators";
 import { QueuedActionsService } from "./queued-actions.service";
 
 import { UserRole } from "@inmoflow/db";
@@ -22,29 +22,40 @@ export class QueuedActionsController {
 
   @Get()
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS, UserRole.AGENT)
   findAll(
     @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string; role: string },
     @Query("status") status?: string,
     @Query("ruleId") ruleId?: string,
   ) {
-    return this.service.findAll(tenantId, { status, ruleId });
+    const assigneeId = user.role === "AGENT" ? user.userId : undefined;
+    return this.service.findAll(tenantId, { status, ruleId, assigneeId });
   }
 
   @Get("count")
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.BUSINESS)
-  async count(@TenantId() tenantId: string) {
-    const pending = await this.service.countPending(tenantId);
+  @Roles(UserRole.ADMIN, UserRole.BUSINESS, UserRole.AGENT)
+  async count(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string; role: string },
+  ) {
+    const assigneeId = user.role === "AGENT" ? user.userId : undefined;
+    const pending = await this.service.countPending(tenantId, assigneeId);
     return { pending };
   }
 
   /** Cancel a single pending queued action */
   @Patch(":id/cancel")
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "BUSINESS")
-  cancel(@TenantId() tenantId: string, @Param("id") id: string) {
-    return this.service.cancel(tenantId, id);
+  @Roles("ADMIN", "BUSINESS", "AGENT")
+  cancel(
+    @TenantId() tenantId: string,
+    @Param("id") id: string,
+    @CurrentUser() user: { userId: string; role: string },
+  ) {
+    const assigneeId = user.role === "AGENT" ? user.userId : undefined;
+    return this.service.cancel(tenantId, id, assigneeId);
   }
 
   /** Cancel all pending queued actions */
@@ -59,8 +70,13 @@ export class QueuedActionsController {
   /** Retry a failed queued action */
   @Patch(":id/retry")
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "BUSINESS")
-  retry(@TenantId() tenantId: string, @Param("id") id: string) {
-    return this.service.retry(tenantId, id);
+  @Roles("ADMIN", "BUSINESS", "AGENT")
+  retry(
+    @TenantId() tenantId: string,
+    @Param("id") id: string,
+    @CurrentUser() user: { userId: string; role: string },
+  ) {
+    const assigneeId = user.role === "AGENT" ? user.userId : undefined;
+    return this.service.retry(tenantId, id, assigneeId);
   }
 }

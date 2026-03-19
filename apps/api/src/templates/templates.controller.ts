@@ -89,9 +89,13 @@ export class TemplatesController {
 
   @Delete(":id")
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "BUSINESS")
+  @Roles("ADMIN", "BUSINESS", "AGENT")
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@TenantId() tenantId: string, @Param("id") id: string) {
-    await this.templates.delete(tenantId, id);
+  async delete(
+    @TenantId() tenantId: string,
+    @Param("id") id: string,
+    @CurrentUser() user: { userId: string; role: string },
+  ) {
+    await this.templates.delete(tenantId, id, user.userId, user.role);
   }
 }
