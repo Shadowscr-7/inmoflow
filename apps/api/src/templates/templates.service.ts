@@ -103,7 +103,7 @@ export class TemplatesService {
         name: dto.name,
         channel: dto.channel,
         content: dto.content,
-        attachments: dto.attachments ? (dto.attachments as any) : undefined,
+        attachments: dto.attachments?.length ? (dto.attachments as any) : undefined,
         enabled: dto.enabled ?? true,
       },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },
