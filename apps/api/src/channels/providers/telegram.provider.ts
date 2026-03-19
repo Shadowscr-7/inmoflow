@@ -65,6 +65,42 @@ export class TelegramProvider implements OnModuleInit {
     return res.json();
   }
 
+  /**
+   * Send a media file (photo, document, video, audio) to a Telegram chatId.
+   */
+  async sendMedia(
+    chatId: string,
+    mediaUrl: string,
+    mediaType: "image" | "video" | "audio" | "document",
+    caption?: string,
+  ) {
+    const methodMap: Record<string, { method: string; field: string }> = {
+      image: { method: "sendPhoto", field: "photo" },
+      video: { method: "sendVideo", field: "video" },
+      audio: { method: "sendAudio", field: "audio" },
+      document: { method: "sendDocument", field: "document" },
+    };
+    const { method, field } = methodMap[mediaType] ?? methodMap.document;
+
+    const res = await fetch(`${this.apiBase}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        [field]: mediaUrl,
+        ...(caption && { caption }),
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      this.logger.error(`Telegram ${method} failed: ${err}`);
+      throw new Error(`Telegram API error: ${res.status}`);
+    }
+
+    return res.json();
+  }
+
   // ─── Internal ───────────────────────────────────────
 
   private getBotUsername(): string {

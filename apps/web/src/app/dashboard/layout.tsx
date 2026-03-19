@@ -38,6 +38,7 @@ import {
   Wallet,
   Clock,
   Store,
+  MessageSquare,
 } from "lucide-react";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -71,6 +72,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Cola pendiente", href: "/dashboard/queued-actions", icon: Clock, roles: ["ADMIN", "BUSINESS"] },
   { label: "Importar", href: "/dashboard/import", icon: Upload, roles: ["ADMIN", "BUSINESS"] },
   { label: "Reportes", href: "/dashboard/reports", icon: BarChart3, roles: ["ADMIN", "BUSINESS"] },
+  { label: "Mensajes", href: "/dashboard/messages", icon: MessageSquare, roles: ["ADMIN", "BUSINESS"] },
   { label: "Rendimiento", href: "/dashboard/agent-performance", icon: Trophy, roles: ["ADMIN", "BUSINESS"] },
   { label: "Comisiones", href: "/dashboard/commissions", icon: Wallet, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Agente IA", href: "/dashboard/ai-agent", icon: Bot, roles: ["ADMIN", "BUSINESS"], minPlan: "PROFESSIONAL" },

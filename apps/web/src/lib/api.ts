@@ -214,6 +214,23 @@ export interface MessagesResponse {
   offset: number;
 }
 
+export interface MessageHistoryItem extends Message {
+  lead: {
+    id: string;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    assignee: { id: string; name: string | null; email: string } | null;
+  } | null;
+}
+
+export interface MessageHistoryResponse {
+  data: MessageHistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 // ─── Lead Sources ─────────────────────────────────────
 
 export interface LeadSource {
@@ -234,6 +251,13 @@ export interface LeadSource {
 
 // ─── Templates ────────────────────────────────────────
 
+export interface TemplateAttachment {
+  url: string;
+  originalName: string;
+  mimeType: string;
+  size?: number;
+}
+
 export interface Template {
   id: string;
   tenantId: string;
@@ -242,6 +266,7 @@ export interface Template {
   name: string;
   channel: "WHATSAPP" | "TELEGRAM" | "WEB" | null;
   content: string;
+  attachments: TemplateAttachment[] | null;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -840,6 +865,10 @@ export const api = {
   retryMessage(token: string, leadId: string, messageId: string) {
     return apiFetch<{ queued: boolean }>(`/messages/${leadId}/${messageId}/retry`, { token, method: "POST" });
   },
+  getMessageHistory(token: string, params?: Record<string, string>) {
+    const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+    return apiFetch<MessageHistoryResponse>(`/messages/history${qs}`, { token });
+  },
 
   // ─── Lead Sources ─────────────────────────────────
   getLeadSources(token: string, params?: Record<string, string>) {
@@ -879,6 +908,25 @@ export const api = {
   },
   deleteTemplate(token: string, id: string) {
     return apiFetch<void>(`/templates/${id}`, { token, method: "DELETE" });
+  },
+
+  // ─── Uploads ──────────────────────────────────────
+  async uploadFiles(token: string, files: File[]): Promise<TemplateAttachment[]> {
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f));
+
+    const res = await fetch(`${API_URL}/api/uploads`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as Record<string, string>;
+      throw new ApiError(res.status, body.message ?? res.statusText, body);
+    }
+
+    return res.json();
   },
 
   // ─── Rules ────────────────────────────────────────

@@ -20,6 +20,91 @@ export class MessagesService {
   ) {}
 
   /**
+   * Full message history with filters (for the Messages admin page).
+   */
+  async findHistory(
+    tenantId: string,
+    filters: {
+      direction?: "IN" | "OUT";
+      status?: string;
+      channel?: string;
+      assigneeId?: string;
+      from?: string;
+      to?: string;
+      search?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
+    const where: any = { tenantId };
+
+    if (filters.direction) where.direction = filters.direction;
+    if (filters.channel) where.channel = filters.channel;
+
+    // Status filter: "sent", "failed", "queued"
+    if (filters.status === "failed") {
+      where.status = "failed";
+    } else if (filters.status === "sent") {
+      where.status = "sent";
+    } else if (filters.status === "queued") {
+      where.status = "queued";
+    }
+
+    // Filter by assignee (lead's assigned agent)
+    if (filters.assigneeId) {
+      where.lead = { assigneeId: filters.assigneeId };
+    }
+
+    // Date range
+    if (filters.from || filters.to) {
+      where.createdAt = {};
+      if (filters.from) where.createdAt.gte = new Date(filters.from);
+      if (filters.to) {
+        const toDate = new Date(filters.to);
+        toDate.setHours(23, 59, 59, 999);
+        where.createdAt.lte = toDate;
+      }
+    }
+
+    // Text search in content or lead phone/name
+    if (filters.search) {
+      where.OR = [
+        { content: { contains: filters.search, mode: "insensitive" } },
+        { to: { contains: filters.search, mode: "insensitive" } },
+        { from: { contains: filters.search, mode: "insensitive" } },
+        { lead: { name: { contains: filters.search, mode: "insensitive" } } },
+        { lead: { phone: { contains: filters.search, mode: "insensitive" } } },
+      ];
+    }
+
+    const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
+    const offset = Math.max(filters.offset ?? 0, 0);
+
+    const [data, total] = await Promise.all([
+      this.prisma.message.findMany({
+        where,
+        include: {
+          lead: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+              assignee: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.message.count({ where }),
+    ]);
+
+    return { data, total, limit, offset };
+  }
+
+  /**
    * List messages for a lead (conversation view).
    */
   async findByLead(tenantId: string, leadId: string, limit = 50, offset = 0) {

@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { MessagesService } from "./messages.service";
-import { JwtAuthGuard, TenantGuard } from "../auth/guards";
+import { JwtAuthGuard, TenantGuard, RolesGuard, Roles } from "../auth/guards";
 import { TenantId } from "../auth/decorators";
 import { SendMessageDto } from "../channels/dto";
 
@@ -16,6 +16,37 @@ import { SendMessageDto } from "../channels/dto";
 @UseGuards(JwtAuthGuard, TenantGuard)
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
+
+  /**
+   * GET /messages/history — full message history with filters (ADMIN / BUSINESS only)
+   */
+  @Get("history")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "BUSINESS")
+  history(
+    @TenantId() tenantId: string,
+    @Query("direction") direction?: string,
+    @Query("status") status?: string,
+    @Query("channel") channel?: string,
+    @Query("assigneeId") assigneeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("search") search?: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    return this.messagesService.findHistory(tenantId, {
+      direction: direction as "IN" | "OUT" | undefined,
+      status: status || undefined,
+      channel: channel || undefined,
+      assigneeId: assigneeId || undefined,
+      from: from || undefined,
+      to: to || undefined,
+      search: search || undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
+  }
 
   /**
    * GET /messages/:leadId — conversation for a lead

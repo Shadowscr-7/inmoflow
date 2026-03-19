@@ -280,13 +280,15 @@ export class WebhooksController {
       throw new ForbiddenException("Webhook secret not configured");
     }
 
-    this.logger.debug(`WA webhook: ${body.event}`);
+    this.logger.debug(`WA webhook: ${body.event} instance=${body.instance}`);
 
     try {
       if (body.event === "connection.update") {
         await this.handleConnectionUpdate(body);
       } else if (body.event === "messages.upsert") {
         await this.handleMessageUpsert(body);
+      } else {
+        this.logger.debug(`WA webhook: unhandled event type "${body.event}"`);
       }
     } catch (err) {
       this.logger.error(`WA webhook error: ${(err as Error).message}`);
@@ -331,41 +333,48 @@ export class WebhooksController {
     const msgData = payload.data;
     if (!msgData) return;
 
-    // Only handle incoming messages
+    // Only handle incoming messages (from the client, not from the agent's phone)
     const isFromMe = msgData.key?.fromMe === true;
     if (isFromMe) return;
+
+    // Skip group messages
+    const remoteJid = msgData.key?.remoteJid ?? "";
+    if (remoteJid.endsWith("@g.us")) return;
 
     // Find channel
     const channel = await this.prisma.channel.findFirst({
       where: { providerInstanceId: instanceName },
     });
-    if (!channel) return;
+    if (!channel) {
+      this.logger.warn(`WA inbound: no channel found for instance "${instanceName}"`);
+      return;
+    }
 
     const tenantId = channel.tenantId;
-    const remoteJid = msgData.key?.remoteJid ?? "";
     // Extract phone from JID (e.g., "5491112345678@s.whatsapp.net" → "5491112345678")
     const phone = remoteJid.replace(/@.*/, "");
+    const phoneWithPlus = phone.startsWith("+") ? phone : `+${phone}`;
+    const phoneWithoutPlus = phone.replace(/^\+/, "");
     const content =
       msgData.message?.conversation ??
       msgData.message?.extendedTextMessage?.text ??
       "[media]";
     const pushName = msgData.pushName ?? undefined;
 
-    // Find or create lead by phone
+    // Find or create lead by phone — try both formats (with and without "+")
     let lead = await this.prisma.lead.findFirst({
-      where: { tenantId, phone },
+      where: {
+        tenantId,
+        OR: [
+          { phone: phoneWithoutPlus },
+          { phone: phoneWithPlus },
+          { whatsappFrom: phoneWithoutPlus },
+          { whatsappFrom: phoneWithPlus },
+        ],
+      },
     });
 
-    if (!lead) {
-      // Also try whatsappFrom
-      lead = await this.prisma.lead.findFirst({
-        where: { tenantId, whatsappFrom: phone },
-      });
-    }
-
     // ── AI Demo Mode: check if this phone matches a lead's demo test number ──
-    // When demo mode is active, messages from the test phone are treated as
-    // if they came from the real lead — so the business owner can chat with the AI.
     let isDemoInbound = false;
     if (!lead || !lead.aiConversationActive) {
       const demoLead = await this.prisma.lead.findFirst({
@@ -373,7 +382,10 @@ export class WebhooksController {
           tenantId,
           aiConversationActive: true,
           aiDemoMode: true,
-          aiDemoPhone: phone,
+          OR: [
+            { aiDemoPhone: phoneWithoutPlus },
+            { aiDemoPhone: phoneWithPlus },
+          ],
         },
       });
       if (demoLead) {
@@ -393,8 +405,8 @@ export class WebhooksController {
         data: {
           tenantId,
           name: pushName,
-          phone,
-          whatsappFrom: phone,
+          phone: phoneWithPlus,
+          whatsappFrom: phoneWithoutPlus,
           primaryChannel: "WHATSAPP",
           status: "NEW",
           stageId: defaultStage?.id,
@@ -420,6 +432,13 @@ export class WebhooksController {
       if (channel.userId) {
         await this.eventProducer.emitLeadAssigned(tenantId, lead.id, channel.userId);
       }
+    } else if (!lead.whatsappFrom) {
+      // Existing lead found but missing whatsappFrom — populate it for future outbound messages
+      await this.prisma.lead.update({
+        where: { id: lead.id },
+        data: { whatsappFrom: phoneWithoutPlus },
+      });
+      lead = { ...lead, whatsappFrom: phoneWithoutPlus };
     }
 
     // Save message
@@ -429,12 +448,12 @@ export class WebhooksController {
         leadId: lead.id,
         direction: "IN",
         channel: "WHATSAPP",
-        from: phone,
+        from: phoneWithPlus,
         content,
         providerMessageId: msgData.key?.id,
         rawPayload: {
           ...(msgData as Record<string, unknown>),
-          ...(isDemoInbound && { aiDemoInbound: true, demoPhone: phone }),
+          ...(isDemoInbound && { aiDemoInbound: true, demoPhone: phoneWithoutPlus }),
         } as unknown as Prisma.InputJsonValue,
       },
     });
@@ -458,7 +477,7 @@ export class WebhooksController {
       await this.eventProducer.emitLeadContacted(tenantId, lead.id, message.id, "WHATSAPP");
     }
 
-    this.logger.log(`WA msg IN: ${phone} → tenant ${tenantId.slice(0, 8)}`);
+    this.logger.log(`WA msg IN: ${phoneWithPlus} → lead ${lead.id.slice(0, 8)} (tenant ${tenantId.slice(0, 8)})`);
   }
 }
 

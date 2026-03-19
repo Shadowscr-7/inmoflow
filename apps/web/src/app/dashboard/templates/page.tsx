@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { api, Template } from "@/lib/api";
+import { api, Template, TemplateAttachment } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Plus, FileText, Pencil, Trash2, Globe, User } from "lucide-react";
+import { Plus, FileText, Pencil, Trash2, Globe, User, Upload, X, File, Image, Video, Music } from "lucide-react";
 import { PageHeader, Modal, EmptyState, Toggle, ChannelBadge, PageLoader, useToast, useConfirm } from "@/components/ui";
 
 const CHANNEL_OPTIONS = [
@@ -27,7 +27,7 @@ const TEMPLATE_VARIABLES = [
   { key: "notas", label: "Notas", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-600" },
 ];
 
-const EMPTY_FORM = { key: "", name: "", channel: "", content: "", enabled: true, global: false };
+const EMPTY_FORM = { key: "", name: "", channel: "", content: "", enabled: true, global: false, attachments: [] as TemplateAttachment[] };
 
 type Scope = "all" | "mine" | "global";
 
@@ -41,12 +41,45 @@ export default function TemplatesPage() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [filterChannel, setFilterChannel] = useState("");
   const [filterEnabled, setFilterEnabled] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = user?.role === "BUSINESS" || user?.role === "ADMIN";
+
+  /** Handle file upload */
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const uploaded = await api.uploadFiles(token!, Array.from(files));
+      setForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...uploaded] }));
+      toast.success(`${uploaded.length} archivo(s) subido(s)`);
+    } catch {
+      toast.error("Error al subir archivo(s)");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      attachments: prev.attachments.filter((_, i) => i !== index),
+    }));
+  };
+
+  const getAttachmentIcon = (mimeType: string) => {
+    if (mimeType.startsWith("image/")) return Image;
+    if (mimeType.startsWith("video/")) return Video;
+    if (mimeType.startsWith("audio/")) return Music;
+    return File;
+  };
 
   /** Insert a {{variable}} at the current cursor position in the content textarea */
   const insertVariable = (key: string) => {
@@ -101,7 +134,7 @@ export default function TemplatesPage() {
 
   const openEdit = (t: Template) => {
     setEditing(t);
-    setForm({ key: t.key, name: t.name, channel: t.channel ?? "", content: t.content, enabled: t.enabled, global: t.userId === null });
+    setForm({ key: t.key, name: t.name, channel: t.channel ?? "", content: t.content, enabled: t.enabled, global: t.userId === null, attachments: (t.attachments ?? []) as TemplateAttachment[] });
     setShowModal(true);
   };
 
@@ -117,6 +150,7 @@ export default function TemplatesPage() {
         channel: form.channel || null,
         content: form.content,
         enabled: form.enabled,
+        attachments: form.attachments,
       };
       if (!editing) payload.key = form.key.trim();
       if (isAdmin) payload.global = form.global;
@@ -245,7 +279,14 @@ export default function TemplatesPage() {
                       {t.channel ? <ChannelBadge channel={t.channel} /> : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="table-cell hidden sm:table-cell">{ownerBadge(t)}</td>
-                    <td className="table-cell hidden md:table-cell text-gray-500 dark:text-gray-400 max-w-[250px] truncate">{t.content}</td>
+                    <td className="table-cell hidden md:table-cell text-gray-500 dark:text-gray-400 max-w-[250px] truncate">
+                      {t.content}
+                      {t.attachments && (t.attachments as TemplateAttachment[]).length > 0 && (
+                        <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 border border-violet-200 dark:border-violet-700">
+                          <Upload className="w-3 h-3" /> {(t.attachments as TemplateAttachment[]).length}
+                        </span>
+                      )}
+                    </td>
                     <td className="table-cell text-center">
                       <Toggle checked={t.enabled} onChange={() => handleToggle(t)} size="sm" />
                     </td>
@@ -318,6 +359,50 @@ export default function TemplatesPage() {
               <textarea ref={contentRef} rows={5} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} placeholder={"Hola {{nombre}}, gracias por tu interés."} className="input font-mono" />
               <p className="text-xs text-gray-400 mt-1">Hacé clic en una variable para insertarla en el contenido</p>
             </div>
+
+            {/* Attachments */}
+            <div>
+              <label className="label">Adjuntos</label>
+              <p className="text-xs text-gray-400 mb-2">PDF, imágenes, audio, video — se enviarán junto con el mensaje</p>
+
+              {/* Uploaded attachments list */}
+              {form.attachments.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {form.attachments.map((att, i) => {
+                    const Icon = getAttachmentIcon(att.mimeType);
+                    return (
+                      <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                        <Icon className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{att.originalName}</span>
+                        {att.size && <span className="text-xs text-gray-400 flex-shrink-0">{(att.size / 1024).toFixed(0)} KB</span>}
+                        <button type="button" onClick={() => removeAttachment(i)} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition"
+              >
+                <Upload className="w-4 h-4" />
+                {uploading ? "Subiendo..." : "Agregar archivos"}
+              </button>
+            </div>
+
             {isAdmin && (
               <div className="flex items-center gap-3 p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
                 <Toggle checked={form.global} onChange={(v) => setForm({ ...form, global: v })} />

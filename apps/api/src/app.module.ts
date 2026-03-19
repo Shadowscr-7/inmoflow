@@ -34,6 +34,7 @@ import { QueuedActionsModule } from "./queued-actions/queued-actions.module";
 import { CalendarModule } from "./calendar/calendar.module";
 import { MeliModule } from "./meli/meli.module";
 import { EncryptionModule } from "./common/encryption.module";
+import { UploadsModule } from "./uploads/uploads.module";
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { EncryptionModule } from "./common/encryption.module";
     QueuedActionsModule,
     CalendarModule,
     MeliModule,
+    UploadsModule,
     HealthModule,
   ],
   providers: [

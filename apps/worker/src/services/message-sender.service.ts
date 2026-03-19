@@ -79,9 +79,9 @@ export class MessageSenderService {
 
     try {
       if (message.channel === MessageChannel.WHATSAPP) {
-        return await this.sendWhatsApp(message.id, message.tenantId, lead, message.content, retryAttempt);
+        return await this.sendWhatsApp(message.id, message.tenantId, lead, message.content, retryAttempt, message.mediaUrl, message.mediaType);
       } else if (message.channel === MessageChannel.TELEGRAM) {
-        return await this.sendTelegram(message.id, message.tenantId, lead, message.content, retryAttempt);
+        return await this.sendTelegram(message.id, message.tenantId, lead, message.content, retryAttempt, message.mediaUrl, message.mediaType);
       } else {
         this.logger.debug(`Channel ${message.channel} does not support auto-send`);
         return false;
@@ -100,6 +100,8 @@ export class MessageSenderService {
     lead: { assigneeId: string | null; whatsappFrom: string | null; phone: string | null; aiDemoMode?: boolean; aiDemoPhone?: string | null },
     content: string,
     retryAttempt = 0,
+    mediaUrl?: string | null,
+    mediaType?: string | null,
   ): Promise<boolean> {
     // In AI demo mode, redirect messages to the test phone number
     const isDemoRedirect = !!(lead.aiDemoMode && lead.aiDemoPhone);
@@ -162,18 +164,33 @@ export class MessageSenderService {
     // Format number for Evolution API
     const to = phone.replace(/^\+/, "").replace(/[^0-9]/g, "");
 
-    // Call Evolution API sendText
-    const url = `${this.evoBaseUrl}/message/sendText/${channel.providerInstanceId}`;
+    // Call Evolution API — sendMedia if media is present, else sendText
+    let url: string;
+    let body: Record<string, unknown>;
+
+    if (mediaUrl && mediaType) {
+      url = `${this.evoBaseUrl}/message/sendMedia/${channel.providerInstanceId}`;
+      body = {
+        number: to,
+        mediatype: mediaType,
+        media: mediaUrl,
+        caption: content,
+      };
+    } else {
+      url = `${this.evoBaseUrl}/message/sendText/${channel.providerInstanceId}`;
+      body = {
+        number: to,
+        text: content,
+      };
+    }
+
     const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         apikey: this.evoApiKey,
       },
-      body: JSON.stringify({
-        number: to,
-        text: content,
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(15000),
     });
 
@@ -207,6 +224,8 @@ export class MessageSenderService {
     lead: { assigneeId: string | null; telegramUserId: string | null },
     content: string,
     retryAttempt = 0,
+    mediaUrl?: string | null,
+    mediaType?: string | null,
   ): Promise<boolean> {
     if (!this.tgBotToken) {
       await this.markFailed(messageId, "Telegram bot token not configured");
@@ -251,6 +270,40 @@ export class MessageSenderService {
     }
 
     const chatId = lead.telegramUserId ?? channel.telegramChatId;
+
+    // Send media if present, then send text
+    if (mediaUrl && mediaType) {
+      const methodMap: Record<string, { method: string; field: string }> = {
+        image: { method: "sendPhoto", field: "photo" },
+        video: { method: "sendVideo", field: "video" },
+        audio: { method: "sendAudio", field: "audio" },
+        document: { method: "sendDocument", field: "document" },
+      };
+      const { method, field } = methodMap[mediaType] ?? methodMap.document;
+      const mediaRes = await fetch(`https://api.telegram.org/bot${this.tgBotToken}/${method}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          [field]: mediaUrl,
+          ...(content && { caption: content }),
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!mediaRes.ok) {
+        const errText = await mediaRes.text().catch(() => "");
+        throw new Error(`Telegram API ${mediaRes.status}: ${errText.slice(0, 200)}`);
+      }
+      const data = (await mediaRes.json()) as { result?: { message_id?: number } };
+      const providerMessageId = data?.result?.message_id ? String(data.result.message_id) : undefined;
+
+      await this.prisma.message.update({
+        where: { id: messageId },
+        data: { status: "sent", to: chatId, providerMessageId },
+      });
+      this.logger.log(`Telegram media sent: ${messageId.slice(0, 8)} → ${chatId}`);
+      return true;
+    }
 
     const url = `https://api.telegram.org/bot${this.tgBotToken}/sendMessage`;
     const res = await fetch(url, {

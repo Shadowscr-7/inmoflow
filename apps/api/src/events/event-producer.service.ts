@@ -68,6 +68,7 @@ export class EventProducerService {
       "lead.assigned",
       { tenantId, leadId, assigneeId, previousAssigneeId },
       {
+        jobId: `lead.assigned:${leadId}:${assigneeId}:${Date.now()}`,
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },
         removeOnComplete: 100,

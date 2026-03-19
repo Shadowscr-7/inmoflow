@@ -5,7 +5,7 @@ import { api, Property, PropertyMedia, WhatsAppShare, API_URL } from "@/lib/api"
 import { useEffect, useState, useCallback } from "react";
 import {
   Building2, Plus, Search, X, Edit2, Trash2, MapPin, BedDouble, Bath, Car, Ruler, DollarSign, Eye, QrCode, Share2, ExternalLink,
-  Image as ImageIcon, Video, Link2, Loader2, GripVertical,
+  Image as ImageIcon, Video, Link2, Loader2, GripVertical, Upload,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -61,6 +61,9 @@ export default function PropertiesPage() {
   const [media, setMedia] = useState<PropertyMedia[]>([]);
   const [mediaUrl, setMediaUrl] = useState("");
   const [addingMedia, setAddingMedia] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  // Pending media for new properties (before property ID exists)
+  const [pendingMedia, setPendingMedia] = useState<Array<{ url: string; kind?: string }>>([]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -82,6 +85,7 @@ export default function PropertiesPage() {
     setEditing(null);
     setForm({ status: "ACTIVE", currency: "USD" });
     setMedia([]);
+    setPendingMedia([]);
     setMediaUrl("");
     setShowModal(true);
   };
@@ -133,6 +137,36 @@ export default function PropertiesPage() {
     }
   };
 
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !token) return;
+    setUploadingFiles(true);
+    try {
+      const uploaded = await api.uploadFiles(token, Array.from(files));
+      const items = uploaded.map((f) => ({
+        url: f.url,
+        kind: f.mimeType.startsWith("video/") ? "video" : "image",
+      }));
+
+      if (editing) {
+        // Property exists — attach media directly
+        await api.addPropertyMedia(token, editing.id, items);
+        await reloadPropertyMedia(editing.id);
+        toast.success(`${uploaded.length} archivo(s) subido(s)`);
+      } else {
+        // Creating — store pending media to attach after save
+        setPendingMedia((prev) => [...prev, ...items]);
+        toast.success(`${uploaded.length} archivo(s) listo(s) para guardar`);
+      }
+    } catch {
+      toast.error("Error al subir archivos");
+    }
+    setUploadingFiles(false);
+  };
+
+  const handleRemovePending = (index: number) => {
+    setPendingMedia((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSave = async () => {
     if (!token) return;
 
@@ -159,7 +193,13 @@ export default function PropertiesPage() {
         await api.updateProperty(token, editing.id, data);
         toast.success("Propiedad actualizada");
       } else {
-        await api.createProperty(token, data);
+        const created = await api.createProperty(token, data);
+        // Attach pending media to the newly created property
+        if (pendingMedia.length > 0) {
+          try {
+            await api.addPropertyMedia(token, created.id, pendingMedia);
+          } catch { /* media upload failure shouldn't block creation */ }
+        }
         toast.success("Propiedad creada");
       }
       setShowModal(false);
@@ -483,14 +523,36 @@ export default function PropertiesPage() {
                 </div>
               </div>
 
-              {/* ─── Media Section (only when editing) ────── */}
-              {editing && (
-                <div className="space-y-3">
+              {/* ─── Media Section ────── */}
+              <div className="space-y-3">
                   <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <ImageIcon className="h-4 w-4" /> Imágenes y videos
                   </h3>
 
-                  {/* Add media by URL */}
+                  {/* Upload files from device */}
+                  <div className="flex gap-2">
+                    <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg px-3 py-3 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:border-gray-600 transition-colors">
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,video/*"
+                        className="hidden"
+                        onChange={(e) => handleFileUpload(e.target.files)}
+                        disabled={uploadingFiles}
+                      />
+                      {uploadingFiles ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
+                      ) : (
+                        <Upload className="h-5 w-5 text-gray-400" />
+                      )}
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        {uploadingFiles ? "Subiendo…" : "Subir imágenes o videos"}
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Add media by URL (only when editing) */}
+                  {editing && (
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -509,9 +571,10 @@ export default function PropertiesPage() {
                       Agregar
                     </button>
                   </div>
+                  )}
 
-                  {/* Media grid */}
-                  {media.length > 0 ? (
+                  {/* Existing media grid (editing mode) */}
+                  {editing && media.length > 0 && (
                     <div className="grid grid-cols-3 gap-2">
                       {media.map((m) => (
                         <div key={m.id} className="group relative rounded-lg overflow-hidden border dark:border-gray-600 bg-gray-100 dark:bg-gray-700 aspect-square">
@@ -553,13 +616,38 @@ export default function PropertiesPage() {
                         </div>
                       ))}
                     </div>
-                  ) : (
+                  )}
+
+                  {/* Pending media grid (create mode) */}
+                  {!editing && pendingMedia.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {pendingMedia.map((m, i) => (
+                        <div key={i} className="group relative rounded-lg overflow-hidden border dark:border-gray-600 bg-gray-100 dark:bg-gray-700 aspect-square">
+                          {m.kind === "video" ? (
+                            <div className="flex items-center justify-center h-full">
+                              <Video className="h-8 w-8 text-gray-400" />
+                            </div>
+                          ) : (
+                            <img src={m.url} alt="Preview" className="w-full h-full object-cover" />
+                          )}
+                          <button
+                            onClick={() => handleRemovePending(i)}
+                            className="absolute top-1 right-1 rounded-full bg-red-600/90 p-1 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Empty state */}
+                  {((editing && media.length === 0) || (!editing && pendingMedia.length === 0)) && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
-                      Sin imágenes ni videos. Agregá URLs de imágenes o videos de YouTube/Vimeo.
+                      Sin imágenes ni videos. Subí archivos desde tu dispositivo{editing ? " o agregá URLs" : ""}.
                     </p>
                   )}
                 </div>
-              )}
 
               <div className="flex justify-end gap-2 pt-3 border-t dark:border-gray-700">
                 <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancelar</button>

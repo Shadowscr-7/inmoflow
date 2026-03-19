@@ -3,11 +3,19 @@ import { PrismaService } from "../prisma/prisma.service";
 import { EventLogService } from "../event-log/event-log.service";
 import { EventType, MessageChannel, Prisma } from "@inmoflow/db";
 
+export interface TemplateAttachment {
+  url: string;
+  originalName: string;
+  mimeType: string;
+  size?: number;
+}
+
 export interface CreateTemplateDto {
   key: string;
   name: string;
   channel?: MessageChannel;
   content: string;
+  attachments?: TemplateAttachment[];
   enabled?: boolean;
 }
 
@@ -15,6 +23,7 @@ export interface UpdateTemplateDto {
   name?: string;
   channel?: MessageChannel | null;
   content?: string;
+  attachments?: TemplateAttachment[];
   enabled?: boolean;
   global?: boolean;
 }
@@ -94,6 +103,7 @@ export class TemplatesService {
         name: dto.name,
         channel: dto.channel,
         content: dto.content,
+        attachments: dto.attachments ? (dto.attachments as any) : undefined,
         enabled: dto.enabled ?? true,
       },
       include: { user: { select: { id: true, name: true, email: true, role: true } } },
@@ -125,6 +135,7 @@ export class TemplatesService {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.channel !== undefined && { channel: dto.channel }),
         ...(dto.content !== undefined && { content: dto.content }),
+        ...(dto.attachments !== undefined && { attachments: dto.attachments as any }),
         ...(dto.enabled !== undefined && { enabled: dto.enabled }),
         ...(userIdUpdate !== undefined && { userId: userIdUpdate }),
       },

@@ -194,6 +194,27 @@ export class EvolutionProvider {
   }
 
   /**
+   * Send a media message (image, video, audio, document) through an instance.
+   * Uses Evolution API v2 /message/sendMedia endpoint.
+   */
+  async sendMedia(
+    instanceName: string,
+    to: string,
+    mediaUrl: string,
+    mediaType: "image" | "video" | "audio" | "document",
+    caption?: string,
+    fileName?: string,
+  ) {
+    return this.requestOrThrow("POST", `/message/sendMedia/${instanceName}`, {
+      number: to,
+      mediatype: mediaType,
+      media: mediaUrl,
+      caption: caption ?? "",
+      ...(fileName && { fileName }),
+    });
+  }
+
+  /**
    * Fetch chat messages from Evolution API for a specific JID.
    * Uses POST /chat/findMessages/{instanceName}
    */

@@ -353,6 +353,8 @@ model Message {
   from              String?
   to                String?
   content           String
+  mediaUrl          String?
+  mediaType         String?          // image | video | audio | document
   rawPayload        Json?
   status            String?
   error             String?
@@ -368,16 +370,17 @@ model Message {
 // ─── TEMPLATES & RULES ───────────────────────────────
 
 model Template {
-  id        String          @id @default(uuid())
-  tenantId  String
-  userId    String?
-  key       String
-  name      String
-  channel   MessageChannel?
-  content   String
-  enabled   Boolean         @default(true)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id          String          @id @default(uuid())
+  tenantId    String
+  userId      String?
+  key         String
+  name        String
+  channel     MessageChannel?
+  content     String
+  attachments Json?           // [{ url, originalName, mimeType, size }]
+  enabled     Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)

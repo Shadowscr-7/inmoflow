@@ -180,37 +180,51 @@ export class RuleEngineService {
             `Action ${action.type} failed for rule "${rule.name}": ${(err as Error).message}`,
           );
 
-          await this.prisma.eventLog.create({
-            data: {
-              tenantId,
-              type: EventType.workflow_failed,
-              entity: "Rule",
-              entityId: rule.id,
-              status: "error",
-              message: `Action ${action.type} failed: ${(err as Error).message}`,
-              payload: { ruleId: rule.id, action: action.type, leadId } as unknown as Prisma.InputJsonValue,
-            },
-          });
+          try {
+            await this.prisma.eventLog.create({
+              data: {
+                tenantId,
+                type: EventType.workflow_failed,
+                entity: "Rule",
+                entityId: rule.id,
+                status: "error",
+                message: `Action ${action.type} failed: ${(err as Error).message}`,
+                payload: { ruleId: rule.id, action: action.type, leadId } as unknown as Prisma.InputJsonValue,
+              },
+            });
+          } catch (logErr) {
+            this.logger.error(
+              `Failed to log action error for rule "${rule.name}": ${(logErr as Error).message}`,
+            );
+          }
         }
       }
 
-      // Log successful workflow execution
-      await this.prisma.eventLog.create({
-        data: {
-          tenantId,
-          type: EventType.workflow_executed,
-          entity: "Rule",
-          entityId: rule.id,
-          status: "ok",
-          message: `Rule "${rule.name}" executed ${actions.length} action(s) for lead ${leadId}`,
-          payload: {
-            ruleId: rule.id,
-            leadId,
-            trigger,
-            actionsCount: actions.length,
-          } as unknown as Prisma.InputJsonValue,
-        },
-      });
+      // Log successful workflow execution (wrapped in try/catch to prevent
+      // BullMQ job retry after actions have already been executed, which would
+      // cause duplicate template sends).
+      try {
+        await this.prisma.eventLog.create({
+          data: {
+            tenantId,
+            type: EventType.workflow_executed,
+            entity: "Rule",
+            entityId: rule.id,
+            status: "ok",
+            message: `Rule "${rule.name}" executed ${actions.length} action(s) for lead ${leadId}`,
+            payload: {
+              ruleId: rule.id,
+              leadId,
+              trigger,
+              actionsCount: actions.length,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } catch (logErr) {
+        this.logger.error(
+          `Failed to log workflow execution for rule "${rule.name}": ${(logErr as Error).message}`,
+        );
+      }
     }
 
     return { rulesMatched, actionsExecuted };
@@ -287,29 +301,57 @@ export class RuleEngineService {
       const ctxVal = context[key];
 
       // Support operator objects: { field: { op: "gte", value: 5 } }
+      // Also support frontend shorthand: { field: { contains: "x" } }
       if (typeof value === "object" && !Array.isArray(value) && value !== null) {
-        const cond = value as { op?: string; value?: unknown };
-        if (cond.op && cond.value !== undefined) {
+        const raw = value as Record<string, unknown>;
+
+        // Normalise: { op: "contains", value: "x" } or { contains: "x" }
+        let op: string | undefined;
+        let opValue: unknown;
+
+        if (raw.op !== undefined && raw.value !== undefined) {
+          // Canonical format: { op, value }
+          op = String(raw.op);
+          opValue = raw.value;
+        } else {
+          // Shorthand format from frontend: { contains: "x" }, { not_contains: "x" }, etc.
+          const keys = Object.keys(raw);
+          if (keys.length === 1) {
+            op = keys[0];
+            opValue = raw[op];
+          }
+        }
+
+        if (op && opValue !== undefined) {
           const numCtx = Number(ctxVal);
-          const numVal = Number(cond.value);
+          const numVal = Number(opValue);
           // Case-insensitive helpers for string comparisons
           const strCtx = typeof ctxVal === "string" ? ctxVal.toLowerCase() : undefined;
-          const strVal = typeof cond.value === "string" ? cond.value.toLowerCase() : undefined;
-          switch (cond.op) {
+          const strVal = typeof opValue === "string" ? opValue.toLowerCase() : undefined;
+          switch (op) {
             case "eq":
+            case "equals":
               if (strCtx !== undefined && strVal !== undefined) { if (strCtx !== strVal) return false; }
-              else { if (ctxVal !== cond.value) return false; }
+              else { if (ctxVal !== opValue) return false; }
               break;
             case "neq":
+            case "not_equals":
               if (strCtx !== undefined && strVal !== undefined) { if (strCtx === strVal) return false; }
-              else { if (ctxVal === cond.value) return false; }
+              else { if (ctxVal === opValue) return false; }
               break;
-            case "gt": if (numCtx <= numVal) return false; break;
+            case "gt":
+            case "greater_than":
+              if (numCtx <= numVal) return false; break;
             case "gte": if (numCtx < numVal) return false; break;
-            case "lt": if (numCtx >= numVal) return false; break;
+            case "lt":
+            case "less_than":
+              if (numCtx >= numVal) return false; break;
             case "lte": if (numCtx > numVal) return false; break;
             case "contains":
-              if (typeof ctxVal !== "string" || !ctxVal.toLowerCase().includes(String(cond.value).toLowerCase())) return false;
+              if (typeof ctxVal !== "string" || !ctxVal.toLowerCase().includes(String(opValue).toLowerCase())) return false;
+              break;
+            case "not_contains":
+              if (typeof ctxVal === "string" && ctxVal.toLowerCase().includes(String(opValue).toLowerCase())) return false;
               break;
             default: break;
           }
@@ -439,22 +481,75 @@ export class RuleEngineService {
       (_match: string, key: string) => variables[key] ?? `{{${key}}}`,
     );
 
-    // Save as an outbound message — then attempt to actually send it.
-    const msg = await this.prisma.message.create({
-      data: {
+    // ── Deduplication: prevent sending the same template to the same lead
+    // within a short window (e.g. BullMQ job retry after transient failure).
+    const dedupeWindow = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes
+    const recentDuplicate = await this.prisma.message.findFirst({
+      where: {
         tenantId,
         leadId,
         direction: "OUT",
-        channel: ((template.channel as string) ?? lead.primaryChannel ?? "WEB") as MessageChannel,
         content: rendered,
-        status: "queued",
+        createdAt: { gte: dedupeWindow },
       },
     });
 
-    // Attempt delivery through the correct channel
-    await this.messageSender.sendQueuedMessage(msg.id);
+    if (recentDuplicate) {
+      this.logger.warn(
+        `Template "${action.templateKey}" already sent to lead ${leadId} within dedup window — skipping duplicate`,
+      );
+      return;
+    }
+
+    const channel = ((template.channel as string) ?? lead.primaryChannel ?? "WEB") as MessageChannel;
+    const attachments = (template.attachments as Array<{ url: string; originalName: string; mimeType: string }>) ?? [];
+
+    // Determine the public base URL for attachments (relative URLs need to become absolute)
+    const apiUrl = (process.env.API_PUBLIC_URL ?? process.env.CORS_ORIGINS?.split(",")[0] ?? "http://localhost:4000").replace(/\/+$/, "");
+
+    // Send each attachment as a separate media message
+    for (const att of attachments) {
+      const absoluteUrl = att.url.startsWith("http") ? att.url : `${apiUrl}${att.url}`;
+      const mediaType = this.mimeToMediaType(att.mimeType);
+      const msg = await this.prisma.message.create({
+        data: {
+          tenantId,
+          leadId,
+          direction: "OUT",
+          channel,
+          content: att.originalName,
+          mediaUrl: absoluteUrl,
+          mediaType,
+          status: "queued",
+        },
+      });
+      await this.messageSender.sendQueuedMessage(msg.id);
+    }
+
+    // Save the text content as an outbound message (even if empty, to keep flow consistent)
+    if (rendered.trim()) {
+      const msg = await this.prisma.message.create({
+        data: {
+          tenantId,
+          leadId,
+          direction: "OUT",
+          channel,
+          content: rendered,
+          status: "queued",
+        },
+      });
+      await this.messageSender.sendQueuedMessage(msg.id);
+    }
 
     this.logger.debug(`Template "${action.templateKey}" sent for lead ${leadId}`);
+  }
+
+  /** Map MIME type to a simplified media type for providers */
+  private mimeToMediaType(mimeType: string): string {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("video/")) return "video";
+    if (mimeType.startsWith("audio/")) return "audio";
+    return "document";
   }
 
   private async actionChangeStatus(tenantId: string, leadId: string, action: RuleAction) {
