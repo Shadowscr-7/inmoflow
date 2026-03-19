@@ -6,7 +6,7 @@ import { EvolutionProvider } from "./providers/evolution.provider";
 import { TelegramProvider } from "./providers/telegram.provider";
 
 @Module({
-  controllers: [ChannelsController, WebhooksController],
+  controllers: [WebhooksController, ChannelsController],
   providers: [ChannelsService, EvolutionProvider, TelegramProvider],
   exports: [ChannelsService, EvolutionProvider, TelegramProvider],
 })
