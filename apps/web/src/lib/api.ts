@@ -604,11 +604,17 @@ export interface SummaryReport {
     byStatus: Record<string, number>;
     byStage: Record<string, number>;
     bySource: Record<string, number>;
+    byAssignee?: Record<string, number>;
+    conversionRate?: number;
   };
   properties: { total: number };
   visits: {
     total: number;
     byStatus: Record<string, number>;
+  };
+  messages?: {
+    total: number;
+    byChannel: Record<string, number>;
   };
 }
 
@@ -849,6 +855,9 @@ export const api = {
   },
   deleteChannel(token: string, id: string) {
     return apiFetch<void>(`/channels/${id}`, { token, method: "DELETE" });
+  },
+  disconnectChannel(token: string, id: string) {
+    return apiFetch<void>(`/channels/${id}/disconnect`, { token, method: "POST" });
   },
 
   // ─── Messages ─────────────────────────────────────
@@ -1178,9 +1187,10 @@ export const api = {
   },
 
   // ─── Visits ───────────────────────────────────────
-  getVisits(token: string, params?: Record<string, string>) {
+  async getVisits(token: string, params?: Record<string, string>) {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return apiFetch<Visit[]>(`/visits${qs}`, { token });
+    const res = await apiFetch<{ data: Visit[]; total: number } | Visit[]>(`/visits${qs}`, { token });
+    return Array.isArray(res) ? res : res.data;
   },
   getVisitStats(token: string) {
     return apiFetch<{ today: number; thisWeek: number; byStatus: Record<string, number> }>("/visits/stats", { token });
@@ -1237,8 +1247,9 @@ export const api = {
   },
 
   // ─── Follow-Up Sequences ─────────────────────────
-  getSequences(token: string) {
-    return apiFetch<FollowUpSequence[]>("/follow-ups", { token });
+  async getSequences(token: string) {
+    const res = await apiFetch<{ data: FollowUpSequence[]; total: number } | FollowUpSequence[]>("/follow-ups", { token });
+    return Array.isArray(res) ? res : res.data;
   },
   getSequence(token: string, id: string) {
     return apiFetch<FollowUpSequence & { runs: FollowUpRun[] }>(`/follow-ups/${id}`, { token });

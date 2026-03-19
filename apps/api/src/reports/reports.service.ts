@@ -119,9 +119,12 @@ export class ReportsService {
       leadsByStatus,
       leadsByStage,
       leadsBySource,
+      leadsByAssignee,
       totalProperties,
       totalVisits,
       visitsByStatus,
+      totalMessages,
+      messagesByChannel,
     ] = await Promise.all([
       this.prisma.lead.count({ where: { tenantId, ...(createdAt ? { createdAt } : {}) } }),
       this.prisma.lead.groupBy({ by: ["status"], where: { tenantId, ...(createdAt ? { createdAt } : {}) }, _count: true }),
@@ -135,9 +138,16 @@ export class ReportsService {
         where: { tenantId, ...(createdAt ? { createdAt } : {}) },
         _count: true,
       }),
+      this.prisma.lead.groupBy({
+        by: ["assigneeId"],
+        where: { tenantId, assigneeId: { not: null }, ...(createdAt ? { createdAt } : {}) },
+        _count: true,
+      }),
       this.prisma.property.count({ where: { tenantId } }),
       this.prisma.visit.count({ where: { tenantId, ...(createdAt ? { createdAt } : {}) } }),
       this.prisma.visit.groupBy({ by: ["status"], where: { tenantId, ...(createdAt ? { createdAt } : {}) }, _count: true }),
+      this.prisma.message.count({ where: { tenantId, ...(createdAt ? { createdAt } : {}) } }),
+      this.prisma.message.groupBy({ by: ["channel"], where: { tenantId, ...(createdAt ? { createdAt } : {}) }, _count: true }),
     ]);
 
     // Resolve stage names
@@ -154,6 +164,17 @@ export class ReportsService {
       : [];
     const sourceMap = Object.fromEntries(sources.map((s) => [s.id, s.name]));
 
+    // Resolve assignee names
+    const assigneeIds = leadsByAssignee.map((s) => s.assigneeId).filter(Boolean) as string[];
+    const assignees = assigneeIds.length > 0
+      ? await this.prisma.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true, email: true } })
+      : [];
+    const assigneeMap = Object.fromEntries(assignees.map((u) => [u.id, u.name ?? u.email]));
+
+    const wonCount = leadsByStatus.find((s) => s.status === "WON")?._count ?? 0;
+    const lostCount = leadsByStatus.find((s) => s.status === "LOST")?._count ?? 0;
+    const closedTotal = wonCount + lostCount;
+
     return {
       period: { from: from ?? "all", to: to ?? "all" },
       leads: {
@@ -165,11 +186,19 @@ export class ReportsService {
         bySource: Object.fromEntries(
           leadsBySource.map((s) => [sourceMap[s.sourceId!] ?? "Sin fuente", s._count]),
         ),
+        byAssignee: Object.fromEntries(
+          leadsByAssignee.map((s) => [assigneeMap[s.assigneeId!] ?? "Sin asignar", s._count]),
+        ),
+        conversionRate: closedTotal > 0 ? Math.round((wonCount / closedTotal) * 100) : 0,
       },
       properties: { total: totalProperties },
       visits: {
         total: totalVisits,
         byStatus: Object.fromEntries(visitsByStatus.map((s) => [s.status, s._count])),
+      },
+      messages: {
+        total: totalMessages,
+        byChannel: Object.fromEntries(messagesByChannel.map((m) => [m.channel, m._count])),
       },
     };
   }

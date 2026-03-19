@@ -3,7 +3,7 @@
 import { useAuth } from "@/lib/auth";
 import { api, SummaryReport, API_URL } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
-import { BarChart3, Download, Calendar, TrendingUp, Users, Building2, CalendarCheck } from "lucide-react";
+import { BarChart3, Download, Calendar, TrendingUp, Users, Building2, CalendarCheck, MessageSquare, Percent, UserCheck } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
 
@@ -100,8 +100,8 @@ export default function ReportsPage() {
 
       {loading ? <div className="flex justify-center py-12"><Spinner /></div> : report ? (
         <div className="space-y-6">
-          {/* Summary cards */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Summary cards — row 1 */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg"><Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" /></div>
@@ -122,6 +122,15 @@ export default function ReportsPage() {
             </div>
             <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
               <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg"><Percent className="h-5 w-5 text-amber-600 dark:text-amber-400" /></div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{report.leads.conversionRate ?? 0}%</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Conversión</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
+              <div className="flex items-center gap-3">
                 <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded-lg"><Building2 className="h-5 w-5 text-purple-600 dark:text-purple-400" /></div>
                 <div>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{report.properties.total}</p>
@@ -135,6 +144,15 @@ export default function ReportsPage() {
                 <div>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{report.visits.total}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Visitas</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg"><MessageSquare className="h-5 w-5 text-emerald-600 dark:text-emerald-400" /></div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{report.messages?.total ?? 0}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Mensajes</p>
                 </div>
               </div>
             </div>
@@ -199,6 +217,31 @@ export default function ReportsPage() {
               </div>
             </div>
 
+            {/* Leads by assignee */}
+            {report.leads.byAssignee && Object.keys(report.leads.byAssignee).length > 0 && (
+              <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 text-gray-400" /> Leads por Agente
+                </h3>
+                <div className="space-y-2">
+                  {Object.entries(report.leads.byAssignee)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([agent, count]) => {
+                      const pct = report.leads.total > 0 ? (count / report.leads.total) * 100 : 0;
+                      return (
+                        <div key={agent} className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-600 dark:text-gray-400 w-28 truncate">{agent}</span>
+                          <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                            <div className="h-full bg-orange-500 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white w-10 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
             {/* Visits by status */}
             <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
               <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Visitas por Estado</h3>
@@ -217,6 +260,31 @@ export default function ReportsPage() {
                 })}
               </div>
             </div>
+
+            {/* Messages by channel */}
+            {report.messages && Object.keys(report.messages.byChannel).length > 0 && (
+              <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5">
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-gray-400" /> Mensajes por Canal
+                </h3>
+                <div className="space-y-2">
+                  {Object.entries(report.messages.byChannel)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([channel, count]) => {
+                      const pct = report.messages!.total > 0 ? (count / report.messages!.total) * 100 : 0;
+                      return (
+                        <div key={channel} className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-600 dark:text-gray-400 w-28">{channel}</span>
+                          <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white w-10 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

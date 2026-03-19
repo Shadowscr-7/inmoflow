@@ -12,12 +12,15 @@ import {
   ExternalLink,
   Users,
   User as UserIcon,
+  X,
 } from "lucide-react";
 import { ConnectionBadge, PageHeader, useToast } from "@/components/ui";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export default function ChannelsPage() {
   const { token, user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirm();
 
   // My channels (current user)
   const [myChannels, setMyChannels] = useState<Channel[]>([]);
@@ -127,6 +130,24 @@ export default function ChannelsPage() {
   };
 
   const isAdmin = user?.role === "BUSINESS" || user?.role === "ADMIN";
+
+  const handleDisconnectChannel = async (channel: Channel) => {
+    const userName = channel.user?.name ?? channel.user?.email ?? "este agente";
+    const ok = await confirm({
+      title: "Desconectar canal",
+      message: `¿Desconectar el canal ${channel.type} de ${userName}?`,
+      confirmLabel: "Desconectar",
+      danger: true,
+    });
+    if (!ok || !token) return;
+    try {
+      await api.disconnectChannel(token, channel.id);
+      loadChannels();
+      toast.success(`Canal de ${userName} desconectado`);
+    } catch (err) {
+      toast.error(`Error: ${(err as Error).message}`);
+    }
+  };
 
   return (
     <div>
@@ -304,6 +325,7 @@ export default function ChannelsPage() {
                   <th className="table-header hidden sm:table-cell">
                     Conectado
                   </th>
+                  <th className="table-header w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -367,6 +389,17 @@ export default function ChannelsPage() {
                     </td>
                     <td className="table-cell hidden sm:table-cell text-gray-400 text-xs">
                       {new Date(ch.createdAt).toLocaleDateString("es")}
+                    </td>
+                    <td className="table-cell text-center">
+                      {ch.status !== "DISCONNECTED" && (
+                        <button
+                          onClick={() => handleDisconnectChannel(ch)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          title="Desconectar"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
