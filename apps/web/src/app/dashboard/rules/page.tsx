@@ -66,6 +66,7 @@ const CONDITION_FIELDS = [
   { value: "primaryChannel", label: "Canal principal", type: "select" as const, options: CHANNEL_OPTIONS },
   { value: "hasAssignee", label: "Tiene agente asignado", type: "boolean" as const },
   { value: "stageKey", label: "Etapa actual", type: "stage" as const },
+  { value: "sourceName", label: "Nombre de fuente", type: "text" as const },
   { value: "intent", label: "Intención", type: "text" as const },
   { value: "messageContent", label: "Contenido del mensaje", type: "text" as const },
   { value: "noResponseDays", label: "Días sin respuesta", type: "number" as const },
