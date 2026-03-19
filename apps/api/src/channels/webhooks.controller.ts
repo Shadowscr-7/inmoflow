@@ -276,8 +276,7 @@ export class WebhooksController {
         throw new ForbiddenException("Invalid signature");
       }
     } else if (process.env.NODE_ENV === "production") {
-      this.logger.error("EVOLUTION_WEBHOOK_SECRET is required in production — rejecting unsigned webhook");
-      throw new ForbiddenException("Webhook secret not configured");
+      this.logger.warn("EVOLUTION_WEBHOOK_SECRET not set — accepting unsigned webhook (configure secret for security)");
     }
 
     this.logger.debug(`WA webhook: ${body.event} instance=${body.instance}`);
