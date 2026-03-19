@@ -497,18 +497,31 @@ export default function RulesPage() {
                     {Object.entries(r.conditions).map(([k, v]) => {
                       const fieldDef = CONDITION_FIELDS.find((f) => f.value === k);
                       const label = fieldDef?.label ?? k;
-                      let displayValue = String(v);
+                      let operatorLabel = "=";
+                      let rawValue: unknown = v;
+
+                      // Handle operator objects like { "not_contains": "captacion" }
+                      if (v && typeof v === "object" && !Array.isArray(v)) {
+                        const entries = Object.entries(v as Record<string, unknown>);
+                        if (entries.length > 0) {
+                          const op = OPERATORS.find((o) => o.value === entries[0][0]);
+                          operatorLabel = op?.label ?? entries[0][0];
+                          rawValue = entries[0][1];
+                        }
+                      }
+
+                      let displayValue = String(rawValue);
                       if (fieldDef?.type === "select" && "options" in fieldDef) {
-                        const opt = fieldDef.options!.find((o) => o.value === String(v));
+                        const opt = fieldDef.options!.find((o) => o.value === String(rawValue));
                         if (opt) displayValue = opt.label;
                       }
                       if (fieldDef?.type === "stage") {
-                        const stage = stages.find((s) => s.key === String(v));
+                        const stage = stages.find((s) => s.key === String(rawValue));
                         if (stage) displayValue = stage.name;
                       }
                       return (
                         <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-xs">
-                          {label} = {displayValue}
+                          {label} {operatorLabel} {displayValue}
                         </span>
                       );
                     })}

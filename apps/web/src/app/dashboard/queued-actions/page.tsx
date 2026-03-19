@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { api, QueuedAction } from "@/lib/api";
+import { api, QueuedAction, RuleAction, Template } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
   Clock,
@@ -46,6 +46,7 @@ export default function QueuedActionsPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const [items, setItems] = useState<QueuedAction[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("pending");
 
@@ -54,8 +55,12 @@ export default function QueuedActionsPage() {
       setLoading(true);
       const params: Record<string, string> = {};
       if (statusFilter) params.status = statusFilter;
-      const data = await api.getQueuedActions(token!, params);
+      const [data, tpls] = await Promise.all([
+        api.getQueuedActions(token!, params),
+        templates.length === 0 ? api.getTemplates(token!) : Promise.resolve(templates),
+      ]);
       setItems(data);
+      if (tpls !== templates) setTemplates(tpls);
     } catch {
       toast.error("Error al cargar la cola");
     } finally {
@@ -203,6 +208,28 @@ export default function QueuedActionsPage() {
                         Regla: <span className="font-medium text-gray-700 dark:text-gray-300">{item.rule.name}</span>
                       </span>
                     )}
+                    {item.rule?.actions && (() => {
+                      const actions = item.rule.actions as RuleAction[];
+                      const tplAction = actions.find((a) => a.type === "send_template");
+                      const aiAction = actions.find((a) => a.type === "send_ai_message");
+                      if (tplAction?.templateKey) {
+                        const tplName = templates.find((t) => t.key === tplAction.templateKey)?.name ?? tplAction.templateKey;
+                        return (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            📄 Plantilla: <span className="font-medium text-brand-600 dark:text-brand-400">{tplName}</span>
+                            {tplAction.channel && <span className="ml-1 text-gray-400">({tplAction.channel})</span>}
+                          </span>
+                        );
+                      }
+                      if (aiAction) {
+                        return (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            🤖 <span className="font-medium text-purple-600 dark:text-purple-400">Mensaje IA</span>
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
