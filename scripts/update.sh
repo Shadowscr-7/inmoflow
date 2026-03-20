@@ -222,12 +222,22 @@ echo ""
 docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 
-# ─── Limpieza de imágenes antiguas ───────────────────
+# ─── Limpieza de imágenes y cache antiguo ────────────
+step "Limpieza"
+
 DANGLING=$(docker images -f "dangling=true" -q 2>/dev/null | wc -l)
 if [ "$DANGLING" -gt 0 ]; then
   log "Limpiando $DANGLING imágenes huérfanas..."
-  docker image prune -f --quiet > /dev/null 2>&1
+  docker image prune -f > /dev/null 2>&1
   ok "Imágenes antiguas eliminadas"
+fi
+
+# Clean build cache older than 24h (the big space saver)
+CACHE_SIZE=$(docker buildx du 2>/dev/null | tail -1 | awk '{print $2}' || echo "0B")
+if [ "$CACHE_SIZE" != "0B" ]; then
+  log "Limpiando build cache antiguo ($CACHE_SIZE)..."
+  docker builder prune --keep-storage 2GB -f > /dev/null 2>&1
+  ok "Build cache limpiado (manteniendo 2GB)"
 fi
 
 echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
