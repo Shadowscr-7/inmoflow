@@ -105,6 +105,9 @@ services:
       META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
       META_PAGE_ACCESS_TOKEN: ${META_PAGE_ACCESS_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      MELI_CLIENT_ID: ${MELI_CLIENT_ID:-}
+      MELI_CLIENT_SECRET: ${MELI_CLIENT_SECRET:-}
+      MELI_REDIRECT_URI: ${MELI_REDIRECT_URI:-}
     depends_on:
       inmoflow-db:
         condition: service_healthy
