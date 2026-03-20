@@ -504,6 +504,15 @@ export interface MeliSyncResult {
   created: number;
   updated: number;
   errors: number;
+  sellers: MeliSellerSummary[];
+}
+
+export interface MeliSellerSummary {
+  meliSellerId: string;
+  nickname: string;
+  itemCount: number;
+  agentId: string | null;
+  agentName: string | null;
 }
 
 export interface PropertiesResponse {
@@ -1184,6 +1193,13 @@ export const api = {
   },
   disconnectMeli(token: string) {
     return apiFetch<{ ok: boolean }>("/meli", { token, method: "DELETE" });
+  },
+  assignMeliSeller(token: string, meliSellerId: string, agentId: string) {
+    return apiFetch<{ ok: boolean; updated: number }>("/meli/assign-seller", {
+      token,
+      method: "POST",
+      body: JSON.stringify({ meliSellerId, agentId }),
+    });
   },
 
   // ─── Visits ───────────────────────────────────────

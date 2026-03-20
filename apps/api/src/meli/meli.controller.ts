@@ -4,12 +4,12 @@ import {
   Post,
   Delete,
   Query,
-  Res,
+  Body,
   UseGuards,
 } from "@nestjs/common";
-import { Response } from "express";
 import { MeliService } from "./meli.service";
 import { JwtAuthGuard, TenantGuard, TenantId } from "../auth";
+import { PrismaService } from "../prisma/prisma.service";
 
 /**
  * MeliController — MercadoLibre OAuth + sync endpoints.
@@ -20,12 +20,16 @@ import { JwtAuthGuard, TenantGuard, TenantId } from "../auth";
  *   GET  /meli/status         → Check connection status
  *   POST /meli/sync           → Import all items from MeLi
  *   GET  /meli/items          → Preview items before importing
+ *   POST /meli/assign-seller  → Map MeLi seller to InmoFlow agent
  *   DELETE /meli              → Disconnect MeLi
  */
 @Controller("meli")
 @UseGuards(JwtAuthGuard, TenantGuard)
 export class MeliController {
-  constructor(private readonly meliService: MeliService) {}
+  constructor(
+    private readonly meliService: MeliService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /** Is MercadoLibre integration configured on this server? */
   @Get("configured")
@@ -89,5 +93,19 @@ export class MeliController {
   async disconnect(@TenantId() tenantId: string) {
     await this.meliService.disconnect(tenantId);
     return { ok: true };
+  }
+
+  /** Manually assign a MeLi seller to an InmoFlow agent */
+  @Post("assign-seller")
+  async assignSeller(
+    @TenantId() tenantId: string,
+    @Body() body: { meliSellerId: string; agentId: string },
+  ) {
+    // Update all properties from this seller
+    const result = await this.prisma.property.updateMany({
+      where: { tenantId, meliSellerId: body.meliSellerId },
+      data: { assignedUserId: body.agentId },
+    });
+    return { ok: true, updated: result.count };
   }
 }

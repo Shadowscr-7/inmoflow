@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
-import { api, type MeliStatus, type MeliItemPreview, type MeliSyncResult } from "@/lib/api";
+import { api, type MeliStatus, type MeliItemPreview, type MeliSyncResult, type MeliSellerSummary, type User } from "@/lib/api";
 import {
   Store,
   Link2,
@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Loader2,
   Search,
+  Users,
 } from "lucide-react";
 import { PageHeader, PageLoader, useToast, useConfirm, Badge } from "@/components/ui";
 
@@ -31,6 +32,7 @@ export default function MercadoLibrePage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<MeliSyncResult | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [agents, setAgents] = useState<User[]>([]);
 
   // ─── Load status ─────────────────────────────
   const loadStatus = useCallback(async () => {
@@ -131,12 +133,40 @@ export default function MercadoLibrePage() {
       setSyncResult(null);
       const result = await api.syncMeli(token);
       setSyncResult(result);
+      // Load agents if there are sellers to map
+      if (result.sellers?.length) {
+        const users = await api.getUsers(token);
+        setAgents(users);
+      }
       toast.success(`Sincronización completa: ${result.created} creadas, ${result.updated} actualizadas`);
       await loadStatus();
     } catch {
       toast.error("Error al sincronizar");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  // ─── Assign seller to agent ──────────────────
+  const handleAssignSeller = async (meliSellerId: string, agentId: string) => {
+    if (!token) return;
+    try {
+      await api.assignMeliSeller(token, meliSellerId, agentId);
+      // Update local state
+      setSyncResult((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          sellers: prev.sellers.map((s) =>
+            s.meliSellerId === meliSellerId
+              ? { ...s, agentId, agentName: agents.find((a) => a.id === agentId)?.name ?? null }
+              : s,
+          ),
+        };
+      });
+      toast.success("Agente asignado correctamente");
+    } catch {
+      toast.error("Error al asignar agente");
     }
   };
 
@@ -272,6 +302,55 @@ export default function MercadoLibrePage() {
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Errores</div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Sellers / Collaborators ────────── */}
+      {syncResult?.sellers && syncResult.sellers.length > 0 && (
+        <div className="rounded-lg border bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5 text-brand-600" />
+            <h4 className="font-semibold text-gray-900 dark:text-white">
+              Vendedores / Colaboradores
+            </h4>
+          </div>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+            Asigná cada vendedor de MercadoLibre a un agente del CRM para asociar sus publicaciones automáticamente.
+          </p>
+          <div className="divide-y dark:divide-gray-700">
+            {syncResult.sellers.map((seller) => (
+              <div
+                key={seller.meliSellerId}
+                className="flex items-center justify-between gap-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {seller.nickname}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    ID: {seller.meliSellerId} · {seller.itemCount} publicaciones
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={seller.agentId ?? ""}
+                    onChange={(e) => handleAssignSeller(seller.meliSellerId, e.target.value)}
+                    className="rounded-lg border bg-white px-3 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="">Sin asignar</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name ?? agent.email}
+                      </option>
+                    ))}
+                  </select>
+                  {seller.agentName && (
+                    <Badge variant="success">{seller.agentName}</Badge>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

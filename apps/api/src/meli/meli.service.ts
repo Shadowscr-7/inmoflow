@@ -52,32 +52,25 @@ export class MeliService {
    */
   async handleCallback(code: string, tenantId: string): Promise<void> {
     if (!this.isConfigured) {
-      this.logger.error(`MeLi NOT configured. clientId=${this.clientId}, secret=${this.clientSecret ? '***' : 'EMPTY'}, redirectUri=${this.redirectUri}`);
       throw new BadRequestException("MercadoLibre no está configurado");
     }
-
-    this.logger.log(`MeLi callback: code=${code}, tenant=${tenantId}, redirectUri=${this.redirectUri}`);
-
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: this.clientId!,
-      client_secret: this.clientSecret!,
-      code,
-      redirect_uri: this.redirectUri!,
-    });
-
-    this.logger.log(`MeLi token request body: ${body.toString()}`);
 
     const res = await fetch(`${this.API_BASE}/oauth/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body,
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: this.clientId!,
+        client_secret: this.clientSecret!,
+        code,
+        redirect_uri: this.redirectUri!,
+      }),
     });
 
     if (!res.ok) {
       const err = await res.text();
       this.logger.error(`MeLi token exchange failed (HTTP ${res.status}): ${err}`);
-      throw new BadRequestException(`Error al conectar con MercadoLibre: ${err}`);
+      throw new BadRequestException("Error al conectar con MercadoLibre");
     }
 
     const tokens = (await res.json()) as {
@@ -87,22 +80,15 @@ export class MeliService {
       expires_in: number;
     };
 
-    this.logger.log(`MeLi tokens received: userId=${tokens.user_id}, expiresIn=${tokens.expires_in}`);
-
-    try {
-      await this.prisma.tenant.update({
-        where: { id: tenantId },
-        data: {
-          meliAccessToken: this.encryption.encrypt(tokens.access_token),
-          meliRefreshToken: this.encryption.encrypt(tokens.refresh_token),
-          meliUserId: String(tokens.user_id),
-          meliEnabled: true,
-        },
-      });
-    } catch (dbErr) {
-      this.logger.error(`MeLi DB update failed: ${dbErr}`);
-      throw dbErr;
-    }
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        meliAccessToken: this.encryption.encrypt(tokens.access_token),
+        meliRefreshToken: this.encryption.encrypt(tokens.refresh_token),
+        meliUserId: String(tokens.user_id),
+        meliEnabled: true,
+      },
+    });
 
     this.logger.log(`MeLi connected for tenant ${tenantId} (user ${tokens.user_id})`);
   }
@@ -245,7 +231,7 @@ export class MeliService {
       const batch = itemIds.slice(i, i + 20);
       const data = await this.apiGet<MeliMultigetResponse[]>(
         tenantId,
-        `/items?ids=${batch.join(",")}&attributes=id,title,price,currency_id,category_id,permalink,status,pictures,video_id,condition,listing_type_id,sale_terms,location,attributes,descriptions`,
+        `/items?ids=${batch.join(",")}&attributes=id,title,price,currency_id,category_id,permalink,status,pictures,video_id,condition,listing_type_id,sale_terms,location,attributes,descriptions,seller_id`,
       );
       if (data) {
         for (const entry of data) {
@@ -274,7 +260,11 @@ export class MeliService {
    * Import a single MeLi item into InmoFlow as a Property.
    * Creates or updates the property if it already exists (matched by meliItemId).
    */
-  async importItem(tenantId: string, item: MeliItem): Promise<{ id: string; action: "created" | "updated" }> {
+  async importItem(
+    tenantId: string,
+    item: MeliItem,
+    sellerAgentMap?: Map<string, string>,
+  ): Promise<{ id: string; action: "created" | "updated" }> {
     const description = await this.getItemDescription(tenantId, item.id);
 
     // Map MeLi data to our property fields
@@ -287,6 +277,7 @@ export class MeliService {
                    this.extractAttributeNumber(item, "TOTAL_AREA");
     const floors = this.extractAttributeNumber(item, "FLOORS");
     const hasGarage = this.extractAttributeBoolean(item, "HAS_PARKING");
+    const amenities = this.extractAmenities(item);
 
     const zone = item.location?.neighborhood?.name ??
                  item.location?.city?.name ??
@@ -296,6 +287,13 @@ export class MeliService {
     const lng = item.location?.longitude ?? null;
 
     const slug = this.slugify(item.title);
+    const sellerId = item.seller_id ? String(item.seller_id) : null;
+
+    // Resolve agent from seller_id if we have a mapping
+    let assignedUserId: string | undefined;
+    if (sellerId && sellerAgentMap?.has(sellerId)) {
+      assignedUserId = sellerAgentMap.get(sellerId);
+    }
 
     // Check if property already exists
     const existing = await this.prisma.property.findFirst({
@@ -314,6 +312,7 @@ export class MeliService {
       areaM2,
       floors,
       hasGarage,
+      amenities: amenities.length ? JSON.stringify(amenities) : null,
       zone,
       address,
       lat,
@@ -322,7 +321,9 @@ export class MeliService {
       meliPermalink: item.permalink ?? null,
       meliSyncedAt: new Date(),
       meliStatus: item.status ?? null,
+      meliSellerId: sellerId,
       status: item.status === "active" ? "ACTIVE" : "INACTIVE",
+      ...(assignedUserId ? { assignedUserId } : {}),
     };
 
     let propertyId: string;
@@ -410,23 +411,22 @@ export class MeliService {
    * Full sync — import all items from MeLi account.
    * Returns summary of operations.
    */
-  async syncAll(tenantId: string): Promise<{
-    total: number;
-    created: number;
-    updated: number;
-    errors: number;
-  }> {
+  async syncAll(tenantId: string): Promise<MeliSyncResult> {
     const itemIds = await this.getUserItemIds(tenantId);
     if (!itemIds.length) {
-      return { total: 0, created: 0, updated: 0, errors: 0 };
+      return { total: 0, created: 0, updated: 0, errors: 0, sellers: [] };
     }
 
     const items = await this.getItemsDetails(tenantId, itemIds);
+
+    // Build seller → agent mapping
+    const sellerAgentMap = await this.buildSellerAgentMap(tenantId, items);
+
     let created = 0, updated = 0, errors = 0;
 
     for (const item of items) {
       try {
-        const result = await this.importItem(tenantId, item);
+        const result = await this.importItem(tenantId, item, sellerAgentMap);
         if (result.action === "created") created++;
         else updated++;
       } catch (err) {
@@ -441,9 +441,13 @@ export class MeliService {
       data: { meliLastSync: new Date() },
     });
 
-    this.logger.log(`MeLi sync complete for tenant ${tenantId}: ${created} created, ${updated} updated, ${errors} errors`);
+    // Collect unique sellers info for the response
+    const sellerIds = [...new Set(items.map((i) => i.seller_id).filter(Boolean))] as number[];
+    const sellers = await this.getSellersSummary(tenantId, sellerIds, sellerAgentMap);
 
-    return { total: items.length, created, updated, errors };
+    this.logger.log(`MeLi sync complete for tenant ${tenantId}: ${created} created, ${updated} updated, ${errors} errors, ${sellerIds.length} sellers`);
+
+    return { total: items.length, created, updated, errors, sellers };
   }
 
   // ─── Field Mapping Helpers ───────────────────────────
@@ -506,6 +510,161 @@ export class MeliService {
            attr.value_name?.toLowerCase() === "yes" || false;
   }
 
+  /**
+   * Extract amenities from MeLi item attributes.
+   */
+  private extractAmenities(item: MeliItem): string[] {
+    const amenities: string[] = [];
+    const AMENITY_ATTRS: Record<string, string> = {
+      HAS_AIR_CONDITIONING: "Aire acondicionado",
+      HAS_HEATING: "Calefacción",
+      HAS_SWIMMING_POOL: "Piscina",
+      HAS_GARDEN: "Jardín",
+      HAS_TERRACE: "Terraza",
+      HAS_BALCONY: "Balcón",
+      HAS_ELEVATOR: "Ascensor",
+      HAS_PARKING: "Estacionamiento",
+      HAS_GYM: "Gimnasio",
+      HAS_SECURITY: "Seguridad",
+      HAS_LAUNDRY: "Lavadero",
+      HAS_BBQ: "Parrillero",
+      HAS_STORAGE: "Depósito",
+      HAS_PLAYROOM: "Sala de juegos",
+      WITH_FURNITURE: "Amueblado",
+      HAS_ROOF_TERRACE: "Azotea",
+      HAS_SAUNA: "Sauna",
+      HAS_JACUZZI: "Jacuzzi",
+    };
+
+    for (const [attrId, label] of Object.entries(AMENITY_ATTRS)) {
+      if (this.extractAttributeBoolean(item, attrId)) {
+        amenities.push(label);
+      }
+    }
+
+    return amenities;
+  }
+
+  // ─── Seller / Collaborator Mapping ──────────────────
+
+  /**
+   * Build a map of MeLi seller_id → InmoFlow userId.
+   * MeLi "collaborators" are separate MeLi accounts that publish items
+   * under the main account. Each item has a seller_id identifying the publisher.
+   * We try to match sellers to agents by fetching seller nicknames from MeLi
+   * and comparing them to agent names in the system.
+   */
+  private async buildSellerAgentMap(
+    tenantId: string,
+    items: MeliItem[],
+  ): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+
+    // Get unique seller IDs
+    const sellerIds = [...new Set(items.map((i) => i.seller_id).filter(Boolean))] as number[];
+    if (!sellerIds.length) return map;
+
+    // Get all agents for this tenant
+    const agents = await this.prisma.user.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true, email: true },
+    });
+    if (!agents.length) return map;
+
+    // Check if properties already have meliSellerId mapped to an agent
+    const existingMappings = await this.prisma.property.findMany({
+      where: {
+        tenantId,
+        meliSellerId: { in: sellerIds.map(String) },
+        assignedUserId: { not: null },
+      },
+      select: { meliSellerId: true, assignedUserId: true },
+      distinct: ["meliSellerId"],
+    });
+
+    for (const m of existingMappings) {
+      if (m.meliSellerId && m.assignedUserId) {
+        map.set(m.meliSellerId, m.assignedUserId);
+      }
+    }
+
+    // For unmapped sellers, try to match by MeLi nickname → agent name
+    const unmappedSellerIds = sellerIds.filter((id) => !map.has(String(id)));
+
+    for (const sellerId of unmappedSellerIds) {
+      const sellerInfo = await this.apiGet<{ id: number; nickname: string; first_name?: string; last_name?: string }>(
+        tenantId,
+        `/users/${sellerId}`,
+      );
+      if (!sellerInfo) continue;
+
+      const sellerName = sellerInfo.first_name && sellerInfo.last_name
+        ? `${sellerInfo.first_name} ${sellerInfo.last_name}`.toLowerCase()
+        : sellerInfo.nickname?.toLowerCase() ?? "";
+
+      // Try to find agent by partial name match
+      const matched = agents.find((a) => {
+        const agentName = (a.name ?? "").toLowerCase();
+        if (!agentName || !sellerName) return false;
+        return agentName.includes(sellerName) ||
+               sellerName.includes(agentName) ||
+               agentName.split(" ").some((part) => part.length > 2 && sellerName.includes(part));
+      });
+
+      if (matched) {
+        map.set(String(sellerId), matched.id);
+        this.logger.log(`MeLi seller ${sellerId} (${sellerName}) → agent ${matched.name} (${matched.id})`);
+      } else {
+        this.logger.log(`MeLi seller ${sellerId} (${sellerName}) → no agent match found`);
+      }
+    }
+
+    return map;
+  }
+
+  /**
+   * Build a summary of sellers for the sync result response.
+   */
+  private async getSellersSummary(
+    tenantId: string,
+    sellerIds: number[],
+    sellerAgentMap: Map<string, string>,
+  ): Promise<MeliSellerSummary[]> {
+    const sellers: MeliSellerSummary[] = [];
+
+    for (const sellerId of sellerIds) {
+      const sellerInfo = await this.apiGet<{ id: number; nickname: string }>(
+        tenantId,
+        `/users/${sellerId}`,
+      );
+
+      const agentId = sellerAgentMap.get(String(sellerId));
+      let agentName: string | null = null;
+      if (agentId) {
+        const agent = await this.prisma.user.findUnique({
+          where: { id: agentId },
+          select: { name: true },
+        });
+        agentName = agent?.name ?? null;
+      }
+
+      // Count items for this seller
+      const itemCount = await this.prisma.property.count({
+        where: { tenantId, meliSellerId: String(sellerId) },
+      });
+
+      sellers.push({
+        meliSellerId: String(sellerId),
+        nickname: sellerInfo?.nickname ?? `Seller ${sellerId}`,
+        itemCount,
+        agentId: agentId ?? null,
+        agentName,
+      });
+    }
+
+    return sellers;
+  }
+
   private slugify(text: string): string {
     return text
       .toLowerCase()
@@ -526,6 +685,7 @@ export interface MeliItem {
   category_id: string | null;
   permalink: string | null;
   status: string | null;
+  seller_id: number | null;
   pictures: { id: string; url: string; secure_url: string }[] | null;
   video_id: string | null;
   condition: string | null;
@@ -545,4 +705,20 @@ export interface MeliItem {
 interface MeliMultigetResponse {
   code: number;
   body: MeliItem;
+}
+
+export interface MeliSyncResult {
+  total: number;
+  created: number;
+  updated: number;
+  errors: number;
+  sellers: MeliSellerSummary[];
+}
+
+export interface MeliSellerSummary {
+  meliSellerId: string;
+  nickname: string;
+  itemCount: number;
+  agentId: string | null;
+  agentName: string | null;
 }

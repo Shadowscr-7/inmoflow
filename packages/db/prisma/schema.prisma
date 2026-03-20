@@ -178,6 +178,7 @@ model User {
 
   tenant        Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignedLeads Lead[]    @relation("LeadAssignee")
+  assignedProperties Property[] @relation("PropertyAssignee")
   channels      Channel[]
   templates     Template[]
   rules         Rule[]
@@ -465,6 +466,7 @@ model AiConfig {
 model Property {
   id             String    @id @default(uuid())
   tenantId       String
+  assignedUserId String?   // Agent responsible for this property
   code           String?
   title          String
   description    String?
@@ -490,18 +492,21 @@ model Property {
   meliPermalink  String?   // MeLi public listing URL
   meliSyncedAt   DateTime? // Last sync timestamp
   meliStatus     String?   // MeLi status: "active", "paused", "closed"
+  meliSellerId   String?   // MeLi seller_id (for collaborator mapping)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  media  PropertyMedia[]
-  visits Visit[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedUser User?         @relation("PropertyAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  media        PropertyMedia[]
+  visits       Visit[]
 
   @@unique([tenantId, slug])
   @@unique([tenantId, meliItemId])
   @@index([tenantId, status])
   @@index([tenantId, zone])
   @@index([tenantId, price])
+  @@index([tenantId, assignedUserId])
 }
 
 model PropertyMedia {
