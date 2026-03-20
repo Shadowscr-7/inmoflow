@@ -52,25 +52,32 @@ export class MeliService {
    */
   async handleCallback(code: string, tenantId: string): Promise<void> {
     if (!this.isConfigured) {
+      this.logger.error(`MeLi NOT configured. clientId=${this.clientId}, secret=${this.clientSecret ? '***' : 'EMPTY'}, redirectUri=${this.redirectUri}`);
       throw new BadRequestException("MercadoLibre no está configurado");
     }
+
+    this.logger.log(`MeLi callback: code=${code}, tenant=${tenantId}, redirectUri=${this.redirectUri}`);
+
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: this.clientId!,
+      client_secret: this.clientSecret!,
+      code,
+      redirect_uri: this.redirectUri!,
+    });
+
+    this.logger.log(`MeLi token request body: ${body.toString()}`);
 
     const res = await fetch(`${this.API_BASE}/oauth/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        client_id: this.clientId!,
-        client_secret: this.clientSecret!,
-        code,
-        redirect_uri: this.redirectUri!,
-      }),
+      body,
     });
 
     if (!res.ok) {
       const err = await res.text();
-      this.logger.error(`MeLi token exchange failed: ${err}`);
-      throw new BadRequestException("Error al conectar con MercadoLibre");
+      this.logger.error(`MeLi token exchange failed (HTTP ${res.status}): ${err}`);
+      throw new BadRequestException(`Error al conectar con MercadoLibre: ${err}`);
     }
 
     const tokens = (await res.json()) as {
@@ -80,15 +87,22 @@ export class MeliService {
       expires_in: number;
     };
 
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: {
-        meliAccessToken: this.encryption.encrypt(tokens.access_token),
-        meliRefreshToken: this.encryption.encrypt(tokens.refresh_token),
-        meliUserId: String(tokens.user_id),
-        meliEnabled: true,
-      },
-    });
+    this.logger.log(`MeLi tokens received: userId=${tokens.user_id}, expiresIn=${tokens.expires_in}`);
+
+    try {
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          meliAccessToken: this.encryption.encrypt(tokens.access_token),
+          meliRefreshToken: this.encryption.encrypt(tokens.refresh_token),
+          meliUserId: String(tokens.user_id),
+          meliEnabled: true,
+        },
+      });
+    } catch (dbErr) {
+      this.logger.error(`MeLi DB update failed: ${dbErr}`);
+      throw dbErr;
+    }
 
     this.logger.log(`MeLi connected for tenant ${tenantId} (user ${tokens.user_id})`);
   }
