@@ -412,20 +412,25 @@ export class MeliService {
    * Returns summary of operations.
    */
   async syncAll(tenantId: string): Promise<MeliSyncResult> {
+    this.logger.log(`MeLi sync starting for tenant ${tenantId}`);
     const itemIds = await this.getUserItemIds(tenantId);
+    this.logger.log(`MeLi sync: found ${itemIds.length} item IDs`);
     if (!itemIds.length) {
       return { total: 0, created: 0, updated: 0, errors: 0, sellers: [] };
     }
 
     const items = await this.getItemsDetails(tenantId, itemIds);
+    this.logger.log(`MeLi sync: fetched details for ${items.length} items`);
 
     // Build seller → agent mapping
     const sellerAgentMap = await this.buildSellerAgentMap(tenantId, items);
 
     let created = 0, updated = 0, errors = 0;
 
-    for (const item of items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
       try {
+        this.logger.log(`MeLi sync: importing item ${i + 1}/${items.length} — ${item.id}`);
         const result = await this.importItem(tenantId, item, sellerAgentMap);
         if (result.action === "created") created++;
         else updated++;
