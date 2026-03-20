@@ -53,6 +53,7 @@ export class PropertiesService {
         skip: filters?.offset ?? 0,
         include: {
           media: { orderBy: { order: "asc" }, take: 5 },
+          assignedUser: { select: { id: true, name: true, email: true } },
           _count: { select: { visits: true } },
         },
       }),
@@ -67,6 +68,7 @@ export class PropertiesService {
       where: { id, tenantId },
       include: {
         media: { orderBy: { order: "asc" } },
+        assignedUser: { select: { id: true, name: true, email: true } },
         visits: {
           orderBy: { date: "desc" },
           take: 10,

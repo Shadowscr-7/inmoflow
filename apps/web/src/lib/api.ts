@@ -465,6 +465,9 @@ export interface Property {
   meliPermalink: string | null;
   meliSyncedAt: string | null;
   meliStatus: string | null;
+  meliSellerId: string | null;
+  assignedUserId: string | null;
+  assignedUser?: { id: string; name: string | null; email: string } | null;
   createdAt: string;
   updatedAt: string;
   media?: PropertyMedia[];

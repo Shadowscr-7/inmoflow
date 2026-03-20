@@ -74,9 +74,15 @@ export class PublicService {
     return { ok: true, leadId: lead.id };
   }
 
-  /** Generate QR code SVG for a property's public URL */
+  /** Generate QR code SVG — uses MeLi permalink if available, else public page */
   async generateQrSvg(baseUrl: string, tenantId: string, slug: string): Promise<string> {
-    const url = `${baseUrl}/p/${tenantId}/${slug}`;
+    const property = await this.prisma.property.findFirst({
+      where: { tenantId, slug },
+      select: { meliPermalink: true },
+    });
+    const url = property?.meliPermalink
+      ? property.meliPermalink
+      : `${baseUrl}/p/${tenantId}/${slug}`;
     return QRCode.toString(url, { type: "svg", margin: 2, width: 256 });
   }
 

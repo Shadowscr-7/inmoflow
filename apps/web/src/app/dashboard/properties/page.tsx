@@ -5,7 +5,7 @@ import { api, Property, PropertyMedia, WhatsAppShare, API_URL } from "@/lib/api"
 import { useEffect, useState, useCallback } from "react";
 import {
   Building2, Plus, Search, X, Edit2, Trash2, MapPin, BedDouble, Bath, Car, Ruler, DollarSign, Eye, QrCode, Share2, ExternalLink,
-  Image as ImageIcon, Video, Link2, Loader2, GripVertical, Upload,
+  Image as ImageIcon, Video, Link2, Loader2, GripVertical, Upload, ChevronLeft, ChevronRight, User as UserIcon,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -55,6 +55,8 @@ export default function PropertiesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Property | null>(null);
   const [viewing, setViewing] = useState<Property | null>(null);
+  const [viewMediaIdx, setViewMediaIdx] = useState(0);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -258,7 +260,7 @@ export default function PropertiesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {properties.map((p) => (
-            <div key={p.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div key={p.id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => { setViewMediaIdx(0); setLightboxIdx(null); setViewing(p); }}>
               {/* Image placeholder */}
               <div className="h-40 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 flex items-center justify-center relative">
                 {p.media && p.media.length > 0 ? (
@@ -294,8 +296,8 @@ export default function PropertiesPage() {
                   <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
                     <DollarSign className="h-4 w-4" /> {formatPrice(p.price, p.currency)}
                   </span>
-                  <div className="flex gap-1">
-                    <button onClick={() => setViewing(p)} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded"><Eye className="h-4 w-4" /></button>
+                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => { setViewMediaIdx(0); setLightboxIdx(null); setViewing(p); }} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded"><Eye className="h-4 w-4" /></button>
                     <button onClick={() => openEdit(p)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Edit2 className="h-4 w-4" /></button>
                     <button onClick={() => handleDelete(p)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 className="h-4 w-4" /></button>
                   </div>
@@ -320,30 +322,39 @@ export default function PropertiesPage() {
               </div>
               {getStatusBadge(viewing.status)}
 
-              {/* Media gallery */}
+              {/* Media gallery with clickable images */}
               {viewing.media && viewing.media.length > 0 && (
                 <div className="space-y-2">
-                  <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700" style={{ maxHeight: "300px" }}>
+                  <div
+                    className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer relative"
+                    style={{ maxHeight: "300px" }}
+                    onClick={() => setLightboxIdx(viewMediaIdx)}
+                  >
                     {(() => {
-                      const first = viewing.media![0];
-                      if (first.kind === "youtube") {
-                        const match = first.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                      const current = viewing.media![viewMediaIdx] ?? viewing.media![0];
+                      if (current.kind === "youtube") {
+                        const match = current.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
                         return match ? (
                           <iframe
                             src={`https://www.youtube.com/embed/${match[1]}`}
                             className="w-full"
                             style={{ height: "260px" }}
                             allowFullScreen
+                            onClick={(e) => e.stopPropagation()}
                           />
-                        ) : <img src={first.url} alt="" className="w-full h-full object-cover" />;
+                        ) : <img src={current.url} alt="" className="w-full h-full object-cover" />;
                       }
-                      return <img src={first.url} alt={viewing.title} className="w-full object-cover" style={{ maxHeight: "300px" }} />;
+                      return <img src={current.url} alt={viewing.title} className="w-full object-cover" style={{ maxHeight: "300px" }} />;
                     })()}
                   </div>
                   {viewing.media.length > 1 && (
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {viewing.media.map((m, i) => (
-                        <div key={m.id} className="relative h-14 w-14 flex-shrink-0 rounded border dark:border-gray-600 overflow-hidden bg-gray-100 dark:bg-gray-700">
+                        <button
+                          key={m.id}
+                          onClick={() => setViewMediaIdx(i)}
+                          className={`relative h-14 w-14 flex-shrink-0 rounded border overflow-hidden bg-gray-100 dark:bg-gray-700 transition ${i === viewMediaIdx ? "ring-2 ring-indigo-500 border-indigo-500" : "dark:border-gray-600 hover:opacity-80"}`}
+                        >
                           {m.kind === "youtube" || m.kind === "vimeo" ? (
                             <>
                               {m.thumbnailUrl ? (
@@ -358,7 +369,7 @@ export default function PropertiesPage() {
                           ) : (
                             <img src={m.url} alt="" className="h-full w-full object-cover" />
                           )}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -375,6 +386,23 @@ export default function PropertiesPage() {
                 <div className="col-span-2"><span className="text-gray-500">Zona:</span> <span className="font-medium dark:text-white">{viewing.zone ?? "—"}</span></div>
                 <div className="col-span-2"><span className="text-gray-500">Dirección:</span> <span className="font-medium dark:text-white">{viewing.address ?? "—"}</span></div>
               </div>
+              {/* Assigned agent */}
+              {viewing.assignedUser && (
+                <div className="flex items-center gap-2 rounded-lg bg-indigo-50 p-2 text-xs dark:bg-indigo-900/20">
+                  <UserIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <span className="font-medium text-indigo-700 dark:text-indigo-300">Agente:</span>
+                  <span className="text-indigo-600 dark:text-indigo-400">{viewing.assignedUser.name ?? viewing.assignedUser.email}</span>
+                </div>
+              )}
+              {/* MeLi seller info */}
+              {viewing.meliSellerId && !viewing.assignedUser && (
+                <div className="flex items-center gap-2 rounded-lg bg-orange-50 p-2 text-xs dark:bg-orange-900/20">
+                  <UserIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  <span className="font-medium text-orange-700 dark:text-orange-300">Vendedor MeLi:</span>
+                  <span className="text-orange-600 dark:text-orange-400">ID {viewing.meliSellerId}</span>
+                  <span className="text-gray-500 ml-auto text-[10px]">Sin agente asignado</span>
+                </div>
+              )}
               {/* MercadoLibre info */}
               {viewing.meliItemId && (
                 <div className="flex items-center gap-2 rounded-lg bg-yellow-50 p-2 text-xs dark:bg-yellow-900/20">
@@ -394,7 +422,9 @@ export default function PropertiesPage() {
               {/* QR + WhatsApp + Public Link */}
               <div className="flex flex-wrap gap-2 pt-2 border-t dark:border-gray-700">
                 <a
-                  href={`${API_URL}/api/public/properties/${viewing.tenantId}/${viewing.slug}/qr`}
+                  href={viewing.meliPermalink
+                    ? `${API_URL}/api/public/properties/${viewing.tenantId}/${viewing.slug}/qr`
+                    : `${API_URL}/api/public/properties/${viewing.tenantId}/${viewing.slug}/qr`}
                   target="_blank"
                   rel="noopener"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
@@ -413,16 +443,67 @@ export default function PropertiesPage() {
                 >
                   <Share2 className="w-3.5 h-3.5" /> Compartir WhatsApp
                 </button>
-                <a
-                  href={`/p/${viewing.tenantId}/${viewing.slug}`}
-                  target="_blank"
-                  rel="noopener"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" /> Página pública
-                </a>
+                {viewing.meliPermalink ? (
+                  <a
+                    href={viewing.meliPermalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300 hover:bg-yellow-200 dark:hover:bg-yellow-800 transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Ver en MercadoLibre
+                  </a>
+                ) : (
+                  <a
+                    href={`/p/${viewing.tenantId}/${viewing.slug}`}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Página pública
+                  </a>
+                )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Lightbox */}
+      {lightboxIdx !== null && viewing?.media && viewing.media.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90" onClick={() => setLightboxIdx(null)}>
+          <button onClick={() => setLightboxIdx(null)} className="absolute top-4 right-4 text-white/80 hover:text-white z-10">
+            <X className="h-8 w-8" />
+          </button>
+          {viewing.media.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIdx((lightboxIdx - 1 + viewing.media!.length) % viewing.media!.length); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-black/40 rounded-full p-2 z-10"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIdx((lightboxIdx + 1) % viewing.media!.length); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white bg-black/40 rounded-full p-2 z-10"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          )}
+          <div className="max-w-4xl max-h-[85vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const m = viewing.media![lightboxIdx];
+              if (m.kind === "youtube") {
+                const match = m.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                return match ? (
+                  <iframe src={`https://www.youtube.com/embed/${match[1]}`} className="w-[80vw] h-[60vh] rounded-lg" allowFullScreen />
+                ) : <img src={m.url} alt="" className="max-w-full max-h-[85vh] rounded-lg" />;
+              }
+              return <img src={m.url} alt="" className="max-w-full max-h-[85vh] rounded-lg object-contain" />;
+            })()}
+          </div>
+          <div className="absolute bottom-4 text-white/60 text-sm">
+            {lightboxIdx + 1} / {viewing.media.length}
           </div>
         </div>
       )}

@@ -124,9 +124,12 @@ export class PropertiesController {
       lines.push(`\n${desc}`);
     }
 
+    // Prefer MeLi permalink for sharing, fallback to internal public page
     const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
     const frontendUrl = process.env.FRONTEND_URL ?? `${protocol}://localhost:3000`;
-    const publicUrl = `${frontendUrl}/p/${tenantId}/${property.slug}`;
+    const publicUrl = property.meliPermalink
+      ? property.meliPermalink
+      : `${frontendUrl}/p/${tenantId}/${property.slug}`;
     lines.push(`\n🔗 Ver propiedad: ${publicUrl}`);
 
     const text = encodeURIComponent(lines.join("\n"));
