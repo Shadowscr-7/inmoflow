@@ -1,18 +1,19 @@
 FROM node:20-alpine
 RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+
+RUN addgroup --system --gid 1001 appgroup \
+ && adduser --system --uid 1001 appuser --ingroup appgroup
+
 WORKDIR /app
+RUN chown appuser:appgroup /app
 ENV CI=true
 
-COPY . .
+COPY --chown=appuser:appgroup . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @inmoflow/db generate
 RUN pnpm --filter @inmoflow/db build
 RUN pnpm --filter @inmoflow/shared build
 RUN pnpm --filter @inmoflow/worker build
-
-RUN addgroup --system --gid 1001 appgroup \
- && adduser --system --uid 1001 appuser --ingroup appgroup \
- && chown -R appuser:appgroup /app
 
 ENV NODE_ENV=production
 USER appuser
