@@ -64,13 +64,17 @@ export class ReelVideoService {
     };
     this.jobs.set(jobId, job);
 
-    // Resolve local image paths from property media
-    const localPhotoPaths: string[] = [];
+    // Collect HTTP-accessible image URLs for Remotion's browser
+    const apiPort = process.env.API_PORT ?? "4000";
+    const photoUrls: string[] = [];
     if (property.media) {
       for (const m of property.media.filter((x) => x.kind === "image")) {
-        const resolved = await this.propertiesService.resolveMediaUrl(m.url);
-        if (resolved) {
-          localPhotoPaths.push(resolved);
+        if (m.url.startsWith("http://") || m.url.startsWith("https://")) {
+          // External URL (e.g. MercadoLibre) — use directly
+          photoUrls.push(m.url);
+        } else if (m.url.startsWith("/api/uploads/")) {
+          // Local upload — make it HTTP accessible via the API
+          photoUrls.push(`http://localhost:${apiPort}${m.url}`);
         }
       }
     }
@@ -82,7 +86,7 @@ export class ReelVideoService {
 
     // Build input props for Remotion
     const inputProps = {
-      photos: localPhotoPaths, // Will be converted to file:// URLs for Remotion
+      photos: photoUrls, // HTTP URLs accessible by Chromium
       price: priceStr,
       address: property.address ?? property.zone ?? "",
       operationType: (property.operationType ?? "sale") as "sale" | "rent",
@@ -122,10 +126,8 @@ export class ReelVideoService {
         process.env.CHROME_PATH ||
         undefined;
 
-      // Convert local paths to file:// URLs for Remotion's browser
-      const photos = (inputProps.photos as string[]).map(
-        (p) => `file://${p.replace(/\\/g, "/")}`
-      );
+      // Photos are already HTTP URLs, use directly
+      const photos = inputProps.photos as string[];
 
       const entryPoint = path.resolve(process.cwd(), "../../video/src/index.ts");
       job.progress = 10;
