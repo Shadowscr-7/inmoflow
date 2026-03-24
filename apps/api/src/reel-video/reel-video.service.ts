@@ -125,6 +125,12 @@ export class ReelVideoService {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { renderMedia, selectComposition } = require("@remotion/renderer");
 
+      // Use system Chromium on Alpine Linux
+      const browserExecutable =
+        process.env.REMOTION_CHROME_EXECUTABLE ||
+        process.env.CHROME_PATH ||
+        undefined;
+
       // Convert local paths to file:// URLs for Remotion's browser
       const photos = (inputProps.photos as string[]).map(
         (p) => `file://${p.replace(/\\/g, "/")}`
@@ -153,6 +159,8 @@ export class ReelVideoService {
         serveUrl: bundleLocation,
         id: "PropertyReel",
         inputProps: { ...inputProps, photos },
+        browserExecutable,
+        chromiumOptions: { args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] },
       });
 
       // Override duration based on actual photo count
@@ -166,6 +174,8 @@ export class ReelVideoService {
         codec: "h264",
         outputLocation: outputPath,
         inputProps: { ...inputProps, photos },
+        browserExecutable,
+        chromiumOptions: { args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] },
         onProgress: ({ progress }: { progress: number }) => {
           job.progress = 30 + Math.round(progress * 70); // 30-100%
         },

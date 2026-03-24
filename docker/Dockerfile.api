@@ -9,6 +9,7 @@ RUN apk add --no-cache python3 py3-pillow \
 RUN apk add --no-cache chromium font-noto font-noto-emoji
 ENV CHROME_PATH=/usr/bin/chromium-browser
 ENV REMOTION_CHROME_EXECUTABLE=/usr/bin/chromium-browser
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-gpu"
 
 RUN addgroup --system --gid 1001 appgroup \
  && adduser --system --uid 1001 appuser --ingroup appgroup
