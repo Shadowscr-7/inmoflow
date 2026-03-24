@@ -25,6 +25,7 @@ RUN pnpm install --frozen-lockfile
 RUN chmod -R +x /app/node_modules/.pnpm/@remotion+compositor-linux-x64-musl*/node_modules/@remotion/compositor-linux-x64-musl/ 2>/dev/null || true
 RUN mkdir -p /app/apps/api/node_modules/.remotion && chown -R appuser:appgroup /app/apps/api/node_modules/.remotion
 RUN chown -R appuser:appgroup /app/node_modules/.pnpm/@remotion+compositor-linux-x64-musl*/node_modules/@remotion/compositor-linux-x64-musl/ 2>/dev/null || true
+RUN mkdir -p /app/video/node_modules/.cache && chown -R appuser:appgroup /app/video/node_modules
 
 RUN pnpm --filter @inmoflow/db generate
 RUN pnpm --filter @inmoflow/db build
