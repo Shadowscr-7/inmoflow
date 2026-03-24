@@ -295,7 +295,7 @@ export class PropertiesService {
     try {
       const scriptPath = path.resolve(__dirname, "../../scripts/generate_instagram.py");
 
-      await execFileAsync("python", [scriptPath, inputFile, outputFile], {
+      await execFileAsync("python3", [scriptPath, inputFile, outputFile], {
         timeout: 30_000,
       });
 
