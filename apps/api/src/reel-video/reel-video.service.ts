@@ -65,22 +65,13 @@ export class ReelVideoService {
     this.jobs.set(jobId, job);
 
     // Resolve local image paths from property media
-    const photoUrls: string[] = [];
     const localPhotoPaths: string[] = [];
     if (property.media) {
       for (const m of property.media.filter((x) => x.kind === "image")) {
-        const match = m.url.match(/\/api\/uploads\/files\/([^/]+)\/([^/]+)$/);
-        if (match) {
-          const [, fileTenantId, filename] = match;
-          if (!fileTenantId.includes("..") && !filename.includes("..")) {
-            const filePath = path.join(this.uploadDir, fileTenantId, filename);
-            if (fs.existsSync(filePath)) {
-              localPhotoPaths.push(filePath);
-            }
-          }
+        const resolved = await this.propertiesService.resolveMediaUrl(m.url);
+        if (resolved) {
+          localPhotoPaths.push(resolved);
         }
-        // Also keep the URL as fallback
-        photoUrls.push(m.url);
       }
     }
 

@@ -6,6 +6,8 @@ import * as path from "path";
 import * as crypto from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import * as https from "https";
+import * as http from "http";
 
 const execFileAsync = promisify(execFile);
 
@@ -243,6 +245,72 @@ export class PropertiesService {
     };
   }
 
+  // ─── Media URL → local file resolution ──────────
+
+  /**
+   * Resolves a media URL to a local file path.
+   * - Local uploads (/api/uploads/files/...) → returns the disk path directly.
+   * - External URLs (https://...) → downloads to a temp file and returns the temp path.
+   * Returns empty string if resolution fails.
+   */
+  async resolveMediaUrl(url: string): Promise<string> {
+    // Case 1: Local upload
+    const match = url.match(/\/api\/uploads\/files\/([^/]+)\/([^/]+)$/);
+    if (match) {
+      const [, fileTenantId, filename] = match;
+      if (!fileTenantId.includes("..") && !filename.includes("..")) {
+        const resolved = path.join(this.uploadDir, fileTenantId, filename);
+        if (fs.existsSync(resolved)) {
+          return resolved;
+        }
+      }
+      return "";
+    }
+
+    // Case 2: External URL (http/https)
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      try {
+        const tmpDir = path.join(this.uploadDir, "_tmp");
+        if (!fs.existsSync(tmpDir)) {
+          fs.mkdirSync(tmpDir, { recursive: true });
+        }
+        const ext = path.extname(new URL(url).pathname) || ".jpg";
+        const hash = crypto.randomBytes(8).toString("hex");
+        const tmpFile = path.join(tmpDir, `dl_${hash}${ext}`);
+        await this.downloadFile(url, tmpFile);
+        return tmpFile;
+      } catch (err) {
+        this.logger.warn(`Failed to download media: ${url}`, err);
+        return "";
+      }
+    }
+
+    return "";
+  }
+
+  private downloadFile(url: string, dest: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const proto = url.startsWith("https") ? https : http;
+      const request = proto.get(url, (response) => {
+        // Follow redirects
+        if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          this.downloadFile(response.headers.location, dest).then(resolve, reject);
+          return;
+        }
+        if (response.statusCode !== 200) {
+          reject(new Error(`HTTP ${response.statusCode} for ${url}`));
+          return;
+        }
+        const file = fs.createWriteStream(dest);
+        response.pipe(file);
+        file.on("finish", () => { file.close(); resolve(); });
+        file.on("error", (err) => { fs.unlink(dest, () => {}); reject(err); });
+      });
+      request.on("error", (err) => { fs.unlink(dest, () => {}); reject(err); });
+      request.setTimeout(15000, () => { request.destroy(); reject(new Error("Download timeout")); });
+    });
+  }
+
   // ─── Instagram Image ─────────────────────────────
 
   async generateInstagramImage(tenantId: string, id: string): Promise<string> {
@@ -250,20 +318,15 @@ export class PropertiesService {
 
     // Resolve the first image to an absolute local path
     let imagePath = "";
+    const tempFiles: string[] = [];
     if (property.media && property.media.length > 0) {
       const firstImage = property.media.find((m) => m.kind === "image");
       if (firstImage) {
-        // URL format: /api/uploads/files/{tenantId}/{filename}
-        const match = firstImage.url.match(/\/api\/uploads\/files\/([^/]+)\/([^/]+)$/);
-        if (match) {
-          const [, fileTenantId, filename] = match;
-          // Prevent path traversal
-          if (!fileTenantId.includes("..") && !filename.includes("..")) {
-            const resolved = path.join(this.uploadDir, fileTenantId, filename);
-            if (fs.existsSync(resolved)) {
-              imagePath = resolved;
-            }
-          }
+        imagePath = await this.resolveMediaUrl(firstImage.url);
+        // Track temp files for cleanup (downloaded externals)
+        if (imagePath && !imagePath.startsWith(path.join(this.uploadDir, property.tenantId))) {
+          const isTemp = imagePath.includes("_tmp");
+          if (isTemp) tempFiles.push(imagePath);
         }
       }
     }
@@ -308,8 +371,11 @@ export class PropertiesService {
       this.logger.error("Instagram image generation failed", err);
       throw new InternalServerErrorException("Failed to generate Instagram image");
     } finally {
-      // Clean up input file
+      // Clean up input file and temp downloaded images
       try { fs.unlinkSync(inputFile); } catch { /* ignore */ }
+      for (const tf of tempFiles) {
+        try { fs.unlinkSync(tf); } catch { /* ignore */ }
+      }
     }
   }
 }
