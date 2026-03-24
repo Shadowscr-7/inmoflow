@@ -21,9 +21,10 @@ ENV CI=true
 COPY --chown=appuser:appgroup . .
 RUN pnpm install --frozen-lockfile
 
-# Make Remotion compositor binary executable + create writable cache dir
-RUN chmod +x /app/node_modules/.pnpm/@remotion+compositor-linux-x64-musl*/node_modules/@remotion/compositor-linux-x64-musl/remotion 2>/dev/null || true
+# Make all Remotion binaries executable (compositor, ffmpeg, ffprobe) + writable cache
+RUN chmod -R +x /app/node_modules/.pnpm/@remotion+compositor-linux-x64-musl*/node_modules/@remotion/compositor-linux-x64-musl/ 2>/dev/null || true
 RUN mkdir -p /app/apps/api/node_modules/.remotion && chown -R appuser:appgroup /app/apps/api/node_modules/.remotion
+RUN chown -R appuser:appgroup /app/node_modules/.pnpm/@remotion+compositor-linux-x64-musl*/node_modules/@remotion/compositor-linux-x64-musl/ 2>/dev/null || true
 
 RUN pnpm --filter @inmoflow/db generate
 RUN pnpm --filter @inmoflow/db build
