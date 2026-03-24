@@ -136,7 +136,7 @@ export class ReelVideoService {
       const bundleLocation = await bundle({
         entryPoint,
         onProgress: (progress: number) => {
-          job.progress = 10 + Math.round(progress * 20); // 10-30%
+          job.progress = 10 + Math.round((progress / 100) * 20); // 10-30%
         },
       });
 
