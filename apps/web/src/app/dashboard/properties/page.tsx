@@ -5,7 +5,7 @@ import { api, Property, PropertyMedia, WhatsAppShare, API_URL } from "@/lib/api"
 import { useEffect, useState, useCallback } from "react";
 import {
   Building2, Plus, Search, X, Edit2, Trash2, MapPin, BedDouble, Bath, Car, Ruler, DollarSign, Eye, QrCode, Share2, ExternalLink,
-  Image as ImageIcon, Video, Link2, Loader2, GripVertical, Upload, ChevronLeft, ChevronRight, User as UserIcon,
+  Image as ImageIcon, Video, Link2, Loader2, GripVertical, Upload, ChevronLeft, ChevronRight, User as UserIcon, Instagram, Download, Film,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -66,6 +66,13 @@ export default function PropertiesPage() {
   const [uploadingFiles, setUploadingFiles] = useState(false);
   // Pending media for new properties (before property ID exists)
   const [pendingMedia, setPendingMedia] = useState<Array<{ url: string; kind?: string }>>([]);
+  // Instagram image generation
+  const [igLoading, setIgLoading] = useState<string | null>(null);
+  const [igPreview, setIgPreview] = useState<{ url: string; blob: Blob; property: Property } | null>(null);
+  // Reel video generation
+  const [reelTarget, setReelTarget] = useState<Property | null>(null);
+  const [reelForm, setReelForm] = useState({ agentName: "", agentPhone: "" });
+  const [reelStarting, setReelStarting] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -222,6 +229,44 @@ export default function PropertiesPage() {
     } catch (e: unknown) { toast.error(getErrorMessage(e)); }
   };
 
+  const handleInstagramImage = async (p: Property) => {
+    if (!token) return;
+    setIgLoading(p.id);
+    try {
+      const blob = await api.getInstagramImage(token, p.id);
+      const url = URL.createObjectURL(blob);
+      setIgPreview({ url, blob, property: p });
+    } catch (e: unknown) {
+      toast.error(getErrorMessage(e));
+    }
+    setIgLoading(null);
+  };
+
+  const handleIgDownload = () => {
+    if (!igPreview) return;
+    const a = document.createElement("a");
+    a.href = igPreview.url;
+    a.download = `instagram-${igPreview.property.title.replace(/[^a-zA-Z0-9]/g, "_")}.png`;
+    a.click();
+  };
+
+  const closeIgPreview = () => {
+    if (igPreview) URL.revokeObjectURL(igPreview.url);
+    setIgPreview(null);
+  };
+
+  const handleStartReel = async () => {
+    if (!token || !reelTarget || !reelForm.agentName.trim() || !reelForm.agentPhone.trim()) return;
+    setReelStarting(true);
+    try {
+      await api.startReelVideo(token, reelTarget.id, { agentName: reelForm.agentName, agentPhone: reelForm.agentPhone });
+      toast.success("Video en proceso. Ve a Videos de propiedades para ver el progreso.");
+      setReelTarget(null);
+      setReelForm({ agentName: "", agentPhone: "" });
+    } catch (e: unknown) { toast.error(getErrorMessage(e)); }
+    setReelStarting(false);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -298,6 +343,12 @@ export default function PropertiesPage() {
                   </span>
                   <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => { setViewMediaIdx(0); setLightboxIdx(null); setViewing(p); }} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded"><Eye className="h-4 w-4" /></button>
+                    <button onClick={() => handleInstagramImage(p)} className="p-1.5 text-gray-400 hover:text-pink-600 rounded" title="Generar imagen Instagram" disabled={igLoading === p.id}>
+                      {igLoading === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}
+                    </button>
+                    <button onClick={() => { setReelTarget(p); setReelForm({ agentName: "", agentPhone: "" }); }} className="p-1.5 text-gray-400 hover:text-purple-600 rounded" title="Generar video Reel">
+                      <Film className="h-4 w-4" />
+                    </button>
                     <button onClick={() => openEdit(p)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Edit2 className="h-4 w-4" /></button>
                     <button onClick={() => handleDelete(p)} className="p-1.5 text-gray-400 hover:text-red-600 rounded"><Trash2 className="h-4 w-4" /></button>
                   </div>
@@ -737,6 +788,81 @@ export default function PropertiesPage() {
                   {saving && <Spinner className="h-4 w-4" />} {editing ? "Guardar" : "Crear"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Instagram Preview Modal */}
+      {igPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeIgPreview}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Instagram className="h-5 w-5 text-pink-600" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Imagen para Instagram</h3>
+              </div>
+              <button onClick={closeIgPreview} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-4">
+              <img src={igPreview.url} alt="Instagram preview" className="w-full rounded-lg shadow-md" />
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
+              <button onClick={closeIgPreview} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                Cerrar
+              </button>
+              <button onClick={handleIgDownload} className="flex items-center gap-2 px-4 py-2 text-sm bg-pink-600 hover:bg-pink-700 text-white rounded-lg">
+                <Download className="h-4 w-4" /> Descargar imagen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reel Video Form Modal */}
+      {reelTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setReelTarget(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Film className="h-5 w-5 text-purple-600" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Generar video Reel</h3>
+              </div>
+              <button onClick={() => setReelTarget(null)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Video vertical 1080×1920 con las fotos de <strong className="text-gray-900 dark:text-white">{reelTarget.title}</strong>.
+                Ingresá los datos de contacto que aparecerán al final del video.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tu nombre</label>
+                <input
+                  value={reelForm.agentName} onChange={(e) => setReelForm((f) => ({ ...f, agentName: e.target.value }))}
+                  placeholder="Ej: María García"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tu teléfono</label>
+                <input
+                  value={reelForm.agentPhone} onChange={(e) => setReelForm((f) => ({ ...f, agentPhone: e.target.value }))}
+                  placeholder="Ej: +598 99 123 456"
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
+              <button onClick={() => setReelTarget(null)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                Cancelar
+              </button>
+              <button
+                onClick={handleStartReel}
+                disabled={reelStarting || !reelForm.agentName.trim() || !reelForm.agentPhone.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50"
+              >
+                {reelStarting && <Loader2 className="h-4 w-4 animate-spin" />} Generar video
+              </button>
             </div>
           </div>
         </div>

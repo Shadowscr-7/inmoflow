@@ -1174,6 +1174,43 @@ export const api = {
   removePropertyMedia(token: string, mediaId: string) {
     return apiFetch<void>(`/properties/media/${mediaId}`, { token, method: "DELETE" });
   },
+  async getInstagramImage(token: string, propertyId: string): Promise<Blob> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await fetch(`${API_URL}/api/properties/${propertyId}/instagram-image`, {
+        signal: controller.signal,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as Record<string, string>;
+        throw new ApiError(res.status, body.message ?? res.statusText, body);
+      }
+      return await res.blob();
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+
+  // ─── Reel Video ───────────────────────────────────
+  startReelVideo(token: string, propertyId: string, data: { agentName: string; agentPhone: string; musicUrl?: string }) {
+    return apiFetch<{ jobId: string; status: string }>(`/reel-video/${propertyId}`, {
+      token, method: "POST", body: JSON.stringify(data),
+    });
+  },
+  getReelStatus(token: string, jobId: string) {
+    return apiFetch<{ id: string; status: string; progress: number; propertyTitle: string; error: string | null }>(
+      `/reel-video/${jobId}/status`, { token },
+    );
+  },
+  getReelJobs(token: string) {
+    return apiFetch<Array<{ id: string; propertyId: string; propertyTitle: string; status: string; progress: number; error: string | null; createdAt: number }>>(
+      "/reel-video", { token },
+    );
+  },
+  getReelDownloadUrl(jobId: string) {
+    return `${API_URL}/api/reel-video/${jobId}/download`;
+  },
 
   // ─── MercadoLibre ─────────────────────────────────
   getMeliConfigured(token: string) {

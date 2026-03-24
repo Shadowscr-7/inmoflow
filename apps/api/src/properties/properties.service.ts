@@ -1,6 +1,13 @@
-import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
+import { Injectable, NotFoundException, ConflictException, InternalServerErrorException, Logger } from "@nestjs/common";
 import { Prisma } from "@inmoflow/db";
 import { PrismaService } from "../prisma/prisma.service";
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 
 function slugify(text: string): string {
   return text
@@ -13,7 +20,12 @@ function slugify(text: string): string {
 
 @Injectable()
 export class PropertiesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(PropertiesService.name);
+  private readonly uploadDir: string;
+
+  constructor(private readonly prisma: PrismaService) {
+    this.uploadDir = process.env.UPLOAD_DIR ?? path.resolve(process.cwd(), "uploads");
+  }
 
   async findAll(tenantId: string, filters?: {
     status?: string;
@@ -229,5 +241,75 @@ export class PropertiesService {
       byStatus: Object.fromEntries(byStatus.map((s) => [s.status, s._count])),
       byType: Object.fromEntries(byType.filter((t) => t.propertyType).map((t) => [t.propertyType!, t._count])),
     };
+  }
+
+  // ─── Instagram Image ─────────────────────────────
+
+  async generateInstagramImage(tenantId: string, id: string): Promise<string> {
+    const property = await this.findOne(tenantId, id);
+
+    // Resolve the first image to an absolute local path
+    let imagePath = "";
+    if (property.media && property.media.length > 0) {
+      const firstImage = property.media.find((m) => m.kind === "image");
+      if (firstImage) {
+        // URL format: /api/uploads/files/{tenantId}/{filename}
+        const match = firstImage.url.match(/\/api\/uploads\/files\/([^/]+)\/([^/]+)$/);
+        if (match) {
+          const [, fileTenantId, filename] = match;
+          // Prevent path traversal
+          if (!fileTenantId.includes("..") && !filename.includes("..")) {
+            const resolved = path.join(this.uploadDir, fileTenantId, filename);
+            if (fs.existsSync(resolved)) {
+              imagePath = resolved;
+            }
+          }
+        }
+      }
+    }
+
+    // Prepare input JSON for the Python script
+    const inputData = {
+      imageUrl: imagePath,
+      operationType: property.operationType ?? "sale",
+      price: property.price,
+      currency: property.currency ?? "USD",
+      address: property.address ?? property.zone ?? "",
+      bedrooms: property.bedrooms,
+      bathrooms: property.bathrooms,
+      areaM2: property.areaM2,
+    };
+
+    // Create temp files
+    const tmpDir = path.join(this.uploadDir, "_tmp");
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true });
+    }
+
+    const hash = crypto.randomBytes(8).toString("hex");
+    const inputFile = path.join(tmpDir, `ig_input_${hash}.json`);
+    const outputFile = path.join(tmpDir, `ig_output_${hash}.png`);
+
+    fs.writeFileSync(inputFile, JSON.stringify(inputData), "utf-8");
+
+    try {
+      const scriptPath = path.resolve(__dirname, "../../scripts/generate_instagram.py");
+
+      await execFileAsync("python", [scriptPath, inputFile, outputFile], {
+        timeout: 30_000,
+      });
+
+      if (!fs.existsSync(outputFile)) {
+        throw new InternalServerErrorException("Failed to generate Instagram image");
+      }
+
+      return outputFile;
+    } catch (err) {
+      this.logger.error("Instagram image generation failed", err);
+      throw new InternalServerErrorException("Failed to generate Instagram image");
+    } finally {
+      // Clean up input file
+      try { fs.unlinkSync(inputFile); } catch { /* ignore */ }
+    }
   }
 }

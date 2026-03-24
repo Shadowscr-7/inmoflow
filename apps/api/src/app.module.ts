@@ -35,6 +35,7 @@ import { CalendarModule } from "./calendar/calendar.module";
 import { MeliModule } from "./meli/meli.module";
 import { EncryptionModule } from "./common/encryption.module";
 import { UploadsModule } from "./uploads/uploads.module";
+import { ReelVideoModule } from "./reel-video/reel-video.module";
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { UploadsModule } from "./uploads/uploads.module";
     CalendarModule,
     MeliModule,
     UploadsModule,
+    ReelVideoModule,
     HealthModule,
   ],
   providers: [

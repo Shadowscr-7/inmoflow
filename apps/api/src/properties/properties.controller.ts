@@ -1,10 +1,12 @@
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus,
+  Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, HttpCode, HttpStatus, Res, Header,
 } from "@nestjs/common";
+import { Response } from "express";
 import { PropertiesService } from "./properties.service";
 import { CreatePropertyDto, UpdatePropertyDto } from "./dto";
 import { JwtAuthGuard, TenantGuard, RolesGuard, Roles, TenantId } from "../auth";
 import { UserRole } from "@inmoflow/db";
+import * as fs from "fs";
 
 @Controller("properties")
 @UseGuards(JwtAuthGuard, TenantGuard)
@@ -90,6 +92,27 @@ export class PropertiesController {
   @Roles(UserRole.ADMIN, UserRole.BUSINESS)
   removeMedia(@TenantId() tenantId: string, @Param("mediaId") mediaId: string) {
     return this.propertiesService.removeMedia(tenantId, mediaId);
+  }
+
+  // ─── Instagram Image ───────────────────────────
+
+  @Get(":id/instagram-image")
+  async getInstagramImage(
+    @TenantId() tenantId: string,
+    @Param("id") id: string,
+    @Res() res: Response,
+  ) {
+    const filePath = await this.propertiesService.generateInstagramImage(tenantId, id);
+
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Content-Disposition", `attachment; filename="instagram-${id}.png"`);
+
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+    stream.on("end", () => {
+      // Clean up temp file after sending
+      try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    });
   }
 
   // ─── WhatsApp Share ───────────────────────────

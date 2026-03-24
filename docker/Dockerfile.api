@@ -1,6 +1,14 @@
 FROM node:20-alpine
 RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 
+# Python + Pillow for Instagram image generation
+RUN apk add --no-cache python3 py3-pillow
+
+# Chromium for Remotion video rendering
+RUN apk add --no-cache chromium font-noto font-noto-emoji
+ENV CHROME_PATH=/usr/bin/chromium-browser
+ENV REMOTION_CHROME_EXECUTABLE=/usr/bin/chromium-browser
+
 RUN addgroup --system --gid 1001 appgroup \
  && adduser --system --uid 1001 appuser --ingroup appgroup
 
@@ -13,6 +21,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @inmoflow/db generate
 RUN pnpm --filter @inmoflow/db build
 RUN pnpm --filter @inmoflow/shared build
+RUN pnpm --filter @inmoflow/video build 2>/dev/null || true
 RUN pnpm --filter @inmoflow/api build
 
 ENV NODE_ENV=production

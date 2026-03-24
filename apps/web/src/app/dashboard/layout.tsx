@@ -39,6 +39,7 @@ import {
   Clock,
   Store,
   MessageSquare,
+  Film,
 } from "lucide-react";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -59,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Leads", href: "/dashboard/leads", icon: Users, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Embudo", href: "/dashboard/pipeline", icon: Kanban, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Propiedades", href: "/dashboard/properties", icon: Building2, roles: ["ADMIN", "BUSINESS", "AGENT"] },
+  { label: "Videos", href: "/dashboard/property-videos", icon: Film, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Visitas", href: "/dashboard/visits", icon: CalendarDays, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Actividad", href: "/dashboard/activity", icon: Activity },
   { label: "Seguimientos", href: "/dashboard/follow-ups", icon: RefreshCcw, roles: ["ADMIN", "BUSINESS"] },
