@@ -103,6 +103,20 @@ export default function ChannelsPage() {
     }
   };
 
+  const handleResetWA = async () => {
+    if (!token) return;
+    try {
+      await api.resetWhatsApp(token);
+      setWaQr(null);
+      setWaPairing(null);
+      setPolling(false);
+      loadChannels();
+      toast.info("Vinculación cancelada. Podés intentarlo de nuevo.");
+    } catch (err) {
+      toast.error(`Error: ${(err as Error).message}`);
+    }
+  };
+
   const handleConnectTG = async () => {
     if (!token) return;
     setTgLoading(true);
@@ -229,14 +243,25 @@ export default function ChannelsPage() {
                   {myWa.lastError}
                 </p>
               )}
+              {myWa?.status === "CONNECTING" && (
+                <div className="flex items-center gap-2 text-amber-600 bg-amber-50 rounded-lg px-3 py-2.5 text-sm">
+                  <QrCode className="w-4 h-4 shrink-0" />
+                  <span>Vinculación pendiente — el QR no fue escaneado</span>
+                </div>
+              )}
               <button
                 onClick={handleConnectWA}
                 disabled={waLoading}
                 className="btn-primary w-full"
               >
                 <QrCode className="w-4 h-4" />
-                {waLoading ? "Generando QR..." : "Escanear QR de WhatsApp"}
+                {waLoading ? "Generando QR..." : myWa?.status === "CONNECTING" ? "Reintentar QR" : "Escanear QR de WhatsApp"}
               </button>
+              {myWa?.status === "CONNECTING" && (
+                <button onClick={handleResetWA} className="btn-danger w-full">
+                  <X className="w-4 h-4" /> Cancelar vinculación
+                </button>
+              )}
             </div>
           )}
         </div>

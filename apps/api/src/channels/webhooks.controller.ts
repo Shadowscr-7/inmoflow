@@ -233,6 +233,37 @@ export class WebhooksController {
     return { ok: true, status: "DISCONNECTED" };
   }
 
+  /**
+   * POST /channels/whatsapp/reset
+   * Fully resets the user's WA channel — deletes the Evolution instance and removes
+   * the channel record so they can start the pairing flow from scratch.
+   * Use this when the CONNECTING state is stuck or the QR was never scanned.
+   */
+  @Post("channels/whatsapp/reset")
+  @UseGuards(JwtAuthGuard, TenantGuard)
+  async resetWhatsApp(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string },
+  ) {
+    const channel = await this.channelsService.findByUserAndType(tenantId, user.userId, "WHATSAPP");
+    if (!channel) return { ok: true };
+
+    // Delete the Evolution instance entirely so there's no stale state
+    if (channel.providerInstanceId) {
+      try {
+        await this.evolution.deleteInstance(channel.providerInstanceId);
+      } catch {
+        // Ignore — instance may already be gone
+      }
+    }
+
+    // Delete the channel record so the user can start fresh
+    await this.channelsService.delete(tenantId, channel.id);
+
+    this.logger.log(`WhatsApp channel reset for user ${user.userId} (tenant ${tenantId})`);
+    return { ok: true };
+  }
+
   // ═══════════════════════════════════════════════════
   // Telegram — Authenticated per-user endpoints
   // ═══════════════════════════════════════════════════

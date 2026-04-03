@@ -9,6 +9,7 @@ import { RuleEngineService } from "./services/rule-engine.service";
 import { NoResponseScheduler } from "./services/no-response.scheduler";
 import { QueueDrainScheduler } from "./services/queue-drain.scheduler";
 import { AppointmentReminderScheduler } from "./services/appointment-reminder.scheduler";
+import { StuckChannelScheduler } from "./services/stuck-channel.scheduler";
 import { AiAgentService } from "./services/ai-agent.service";
 import { MessageSenderService } from "./services/message-sender.service";
 import { FollowUpScheduler } from "./services/follow-up.scheduler";
@@ -38,6 +39,7 @@ import { LeadScoringService } from "./services/lead-scoring.service";
     NoResponseScheduler,
     QueueDrainScheduler,
     AppointmentReminderScheduler,
+    StuckChannelScheduler,
     FollowUpScheduler,
     LeadScoringService,
     LeadProcessor,
