@@ -131,6 +131,39 @@ export class WebhooksController {
   }
 
   /**
+   * POST /channels/whatsapp/reregister-webhook
+   * Re-registers the webhook URL on the existing Evolution instance without disconnecting.
+   * Use this when the API's public URL changed after the instance was first created.
+   */
+  @Post("channels/whatsapp/reregister-webhook")
+  @UseGuards(JwtAuthGuard, TenantGuard)
+  async reregisterWebhook(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: { userId: string },
+  ) {
+    const channel = await this.channelsService.findByUserAndType(tenantId, user.userId, "WHATSAPP");
+    if (!channel?.providerInstanceId) {
+      return { success: false, message: "No hay instancia de WhatsApp configurada" };
+    }
+
+    const webhookBaseUrl =
+      process.env.WEBHOOK_BASE_URL ??
+      (process.env.PLATFORM_DOMAIN && process.env.NODE_ENV === "production"
+        ? `https://${process.env.PLATFORM_DOMAIN}`
+        : process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000");
+    const webhookUrl = `${webhookBaseUrl}/api/webhooks/whatsapp`;
+
+    const ok = await this.evolution.updateWebhook(channel.providerInstanceId, webhookUrl);
+    return {
+      success: ok,
+      webhookUrl,
+      message: ok
+        ? `Webhook actualizado correctamente → ${webhookUrl}`
+        : "No se pudo actualizar el webhook en Evolution API",
+    };
+  }
+
+  /**
    * GET /channels/whatsapp/qr
    * Refresh QR code for the current user's WA instance.
    */

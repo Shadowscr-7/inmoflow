@@ -3,6 +3,7 @@ import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventLogService } from "../event-log/event-log.service";
+import { EventProducerService } from "../events/event-producer.service";
 import { EvolutionProvider } from "../channels/providers/evolution.provider";
 import { TelegramProvider } from "../channels/providers/telegram.provider";
 import { MessageChannel, MessageDirection, EventType, ChannelStatus } from "@inmoflow/db";
@@ -14,6 +15,7 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventLog: EventLogService,
+    private readonly eventProducer: EventProducerService,
     private readonly evolution: EvolutionProvider,
     private readonly telegram: TelegramProvider,
     @InjectQueue("message") private readonly messageQueue: Queue,
@@ -338,7 +340,7 @@ export class MessagesService {
             )
           : new Date();
 
-        await this.prisma.message.create({
+        const savedMsg = await this.prisma.message.create({
           data: {
             tenantId,
             leadId,
@@ -352,6 +354,11 @@ export class MessagesService {
             createdAt: ts,
           },
         });
+
+        // Emit inbound event so rules engine and AI auto-reply can process it
+        if (direction === MessageDirection.IN) {
+          await this.eventProducer.emitMessageInbound(tenantId, leadId, savedMsg.id, "WHATSAPP", content);
+        }
 
         synced++;
       }

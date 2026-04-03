@@ -99,8 +99,28 @@ export class EvolutionProvider {
   }
 
   /**
+   * Update the webhook URL on an existing Evolution instance.
+   * Call this when the public API URL changes (e.g. after a deploy).
+   */
+  async updateWebhook(instanceName: string, webhookUrl: string): Promise<boolean> {
+    const result = await this.request("PUT", `/webhook/set/${instanceName}`, {
+      url: webhookUrl,
+      byEvents: false,
+      base64: false,
+      enabled: true,
+      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+    });
+    if (result.ok) {
+      this.logger.log(`Webhook updated for ${instanceName}: ${webhookUrl}`);
+    } else {
+      this.logger.warn(`Failed to update webhook for ${instanceName}: ${(result as { error: string }).error}`);
+    }
+    return result.ok;
+  }
+
+  /**
    * Create a new WA instance for a tenant.
-   * If the instance already exists, returns the existing one (idempotent).
+   * If the instance already exists, updates its webhook URL and returns it (idempotent).
    */
   async createInstance(
     instanceName: string,
@@ -109,7 +129,9 @@ export class EvolutionProvider {
     // Check if instance already exists
     const exists = await this.instanceExists(instanceName);
     if (exists) {
-      this.logger.log(`Instance ${instanceName} already exists, reusing`);
+      this.logger.log(`Instance ${instanceName} already exists — updating webhook URL`);
+      // Always sync the webhook URL in case the server URL changed since the instance was created
+      await this.updateWebhook(instanceName, webhookUrl);
       return { instanceName, created: false };
     }
 
