@@ -1,19 +1,28 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
 import { PrismaService } from "../prisma/prisma.service";
+import { MessageChannel, MessageDirection } from "@inmoflow/db";
 
 /**
  * AppointmentReminderScheduler — Cron job that sends notifications
  * to agents about upcoming appointments/visits.
  *
- * Runs every 15 minutes. Sends a reminder 1 hour before the visit
+ * Runs every 10 minutes. Sends a reminder 1 hour before the visit
  * for visits that haven't been reminded yet.
+ *
+ * If sendWhatsappReminder is true and the lead has a phone number,
+ * also queues a WhatsApp message to the lead via the agent's channel.
  */
 @Injectable()
 export class AppointmentReminderScheduler {
   private readonly logger = new Logger(AppointmentReminderScheduler.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue("message") private readonly messageQueue: Queue,
+  ) {}
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async handleReminders(): Promise<void> {
@@ -63,6 +72,35 @@ export class AppointmentReminderScheduler {
             entityId: visit.leadId,
           },
         });
+
+        // Send WhatsApp reminder to the lead if requested
+        if (visit.sendWhatsappReminder && visit.lead?.phone) {
+          try {
+            const leadName = visit.lead.name ? ` ${visit.lead.name}` : "";
+            const addressPart = visit.address ? ` Dirección: ${visit.address}.` : "";
+            const reminderContent = `Hola${leadName}! Te recordamos que tenés una visita programada para hoy ${visitDate} a las ${visitTime}.${addressPart} ¿Confirmás tu asistencia?`;
+
+            const message = await this.prisma.message.create({
+              data: {
+                tenantId: visit.tenantId,
+                leadId: visit.leadId,
+                direction: MessageDirection.OUT,
+                channel: MessageChannel.WHATSAPP,
+                content: reminderContent,
+                status: "queued",
+              },
+            });
+
+            await this.messageQueue.add("message.retry", {
+              messageId: message.id,
+              retryAttempt: 0,
+            });
+
+            this.logger.log(`WhatsApp reminder queued for lead ${visit.leadId} — visit ${visit.id}`);
+          } catch (err) {
+            this.logger.warn(`Failed to queue WhatsApp reminder for visit ${visit.id}: ${err}`);
+          }
+        }
 
         // Mark as reminded
         await this.prisma.visit.update({

@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { api, Visit, Property, Lead } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import {
-  Calendar, Plus, X, Clock, MapPin, User, ChevronLeft, ChevronRight, Edit2, Trash2, Check, XCircle, AlertTriangle,
+  Calendar, Plus, X, Clock, MapPin, User, ChevronLeft, ChevronRight, Edit2, Trash2, Check, XCircle, AlertTriangle, MessageSquare,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -64,6 +64,7 @@ export default function VisitsPage() {
   const [saving, setSaving] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<{ today: number; thisWeek: number } | null>(null);
+  const [newLeadMode, setNewLeadMode] = useState(false);
 
   const weekDays = getWeekDays(currentWeek);
   const from = weekDays[0].toISOString();
@@ -100,43 +101,62 @@ export default function VisitsPage() {
   const openCreate = (day?: Date) => {
     loadFormData();
     setEditing(null);
+    setNewLeadMode(false);
     const d = day ?? new Date();
     d.setHours(10, 0, 0, 0);
-    setForm({ date: d.toISOString().slice(0, 16), status: "SCHEDULED" });
+    setForm({ date: d.toISOString().slice(0, 16), status: "SCHEDULED", sendWhatsappReminder: false });
+    setFormErrors({});
     setShowModal(true);
   };
 
   const openEdit = (v: Visit) => {
     loadFormData();
     setEditing(v);
+    setNewLeadMode(false);
     setForm({
       leadId: v.leadId, propertyId: v.propertyId ?? "", date: v.date.slice(0, 16),
       endDate: v.endDate?.slice(0, 16) ?? "", status: v.status, notes: v.notes ?? "", address: v.address ?? "",
     });
+    setFormErrors({});
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    // Client-side validation
     const errors: Record<string, string> = {};
-    if (!form.leadId) errors.leadId = "Seleccioná un lead";
+
+    if (!editing) {
+      if (newLeadMode) {
+        if (!form.newLeadName && !form.newLeadPhone && !form.newLeadEmail) {
+          errors.newLead = "Ingresá al menos nombre, teléfono o email";
+        }
+      } else {
+        if (!form.leadId) errors.leadId = "Seleccioná un lead";
+      }
+    }
+
     if (!form.date) errors.date = "La fecha es obligatoria";
     if (form.endDate && form.date && new Date(form.endDate as string) <= new Date(form.date as string)) {
       errors.endDate = "La fecha fin debe ser posterior a la fecha inicio";
     }
+
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
+    if (!token || !form.date) return;
 
-    if (!token || !form.leadId || !form.date) return;
     setSaving(true);
     try {
       const data: Record<string, unknown> = { ...form };
       if (!data.propertyId) delete data.propertyId;
       if (!data.endDate) delete data.endDate;
+
       if (editing) {
         await api.updateVisit(token, editing.id, data);
         toast.success("Visita actualizada");
       } else {
+        if (newLeadMode) {
+          // Remove leadId so the API creates the lead automatically
+          delete data.leadId;
+        }
         await api.createVisit(token, data);
         toast.success("Visita agendada");
       }
@@ -163,6 +183,11 @@ export default function VisitsPage() {
   };
 
   const today = new Date();
+
+  const canSave = form.date && (
+    editing ||
+    (newLeadMode ? (form.newLeadName || form.newLeadPhone || form.newLeadEmail) : form.leadId)
+  );
 
   return (
     <div className="space-y-6">
@@ -249,15 +274,74 @@ export default function VisitsPage() {
               </div>
 
               <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Lead *</label>
-                  <select value={String(form.leadId ?? "")} onChange={(e) => setForm({ ...form, leadId: e.target.value })}
-                    className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white ${formErrors.leadId ? "border-red-500" : ""}`}>
-                    <option value="">— Seleccionar lead —</option>
-                    {leads.map((l) => <option key={l.id} value={l.id}>{l.name ?? l.phone ?? l.email ?? l.id}</option>)}
-                  </select>
-                  {formErrors.leadId && <p className="text-xs text-red-500 mt-1">{formErrors.leadId}</p>}
-                </div>
+                {/* Lead section */}
+                {!editing && (
+                  <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 text-xs font-medium">
+                    <button
+                      type="button"
+                      onClick={() => { setNewLeadMode(false); setForm((f) => ({ ...f, newLeadName: "", newLeadPhone: "", newLeadEmail: "" })); setFormErrors({}); }}
+                      className={`flex-1 py-2 ${!newLeadMode ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"}`}
+                    >
+                      Lead existente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setNewLeadMode(true); setForm((f) => ({ ...f, leadId: "" })); setFormErrors({}); }}
+                      className={`flex-1 py-2 ${newLeadMode ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"}`}
+                    >
+                      Nuevo lead
+                    </button>
+                  </div>
+                )}
+
+                {!editing && !newLeadMode && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Lead *</label>
+                    <select value={String(form.leadId ?? "")} onChange={(e) => setForm({ ...form, leadId: e.target.value })}
+                      className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white ${formErrors.leadId ? "border-red-500" : ""}`}>
+                      <option value="">— Seleccionar lead —</option>
+                      {leads.map((l) => <option key={l.id} value={l.id}>{l.name ?? l.phone ?? l.email ?? l.id}</option>)}
+                    </select>
+                    {formErrors.leadId && <p className="text-xs text-red-500 mt-1">{formErrors.leadId}</p>}
+                  </div>
+                )}
+
+                {editing && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Lead</label>
+                    <select value={String(form.leadId ?? "")} onChange={(e) => setForm({ ...form, leadId: e.target.value })}
+                      className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                      <option value="">— Seleccionar lead —</option>
+                      {leads.map((l) => <option key={l.id} value={l.id}>{l.name ?? l.phone ?? l.email ?? l.id}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {!editing && newLeadMode && (
+                  <div className="space-y-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">El lead se creará automáticamente en etapa <strong>Visita</strong></p>
+                    {formErrors.newLead && <p className="text-xs text-red-500">{formErrors.newLead}</p>}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre</label>
+                      <input value={String(form.newLeadName ?? "")} onChange={(e) => setForm({ ...form, newLeadName: e.target.value })}
+                        placeholder="Ej: Juan Pérez"
+                        className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Teléfono</label>
+                      <input value={String(form.newLeadPhone ?? "")} onChange={(e) => setForm({ ...form, newLeadPhone: e.target.value })}
+                        placeholder="Ej: 5491112345678"
+                        className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Email</label>
+                      <input type="email" value={String(form.newLeadEmail ?? "")} onChange={(e) => setForm({ ...form, newLeadEmail: e.target.value })}
+                        placeholder="Ej: juan@email.com"
+                        className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Propiedad (opcional)</label>
                   <select value={String(form.propertyId ?? "")} onChange={(e) => setForm({ ...form, propertyId: e.target.value })}
@@ -276,7 +360,8 @@ export default function VisitsPage() {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Fin (opcional)</label>
                     <input type="datetime-local" value={String(form.endDate ?? "")} onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                      className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                      className={`w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white ${formErrors.endDate ? "border-red-500" : ""}`} />
+                    {formErrors.endDate && <p className="text-xs text-red-500 mt-1">{formErrors.endDate}</p>}
                   </div>
                 </div>
                 {editing && (
@@ -298,6 +383,25 @@ export default function VisitsPage() {
                   <textarea rows={2} value={String(form.notes ?? "")} onChange={(e) => setForm({ ...form, notes: e.target.value })}
                     className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
                 </div>
+
+                {/* WhatsApp reminder toggle — only on create */}
+                {!editing && (
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-600 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.sendWhatsappReminder)}
+                      onChange={(e) => setForm({ ...form, sendWhatsappReminder: e.target.checked })}
+                      className="rounded text-indigo-600"
+                    />
+                    <div className="flex items-center gap-2 flex-1">
+                      <MessageSquare className="h-4 w-4 text-green-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Notificar por WhatsApp</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Enviar mensaje de confirmación 1 hora antes al lead</p>
+                      </div>
+                    </div>
+                  </label>
+                )}
               </div>
 
               <div className="flex justify-between pt-3 border-t dark:border-gray-700">
@@ -309,7 +413,7 @@ export default function VisitsPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancelar</button>
-                  <button onClick={handleSave} disabled={saving || !form.leadId || !form.date}
+                  <button onClick={handleSave} disabled={saving || !canSave}
                     className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
                     {saving && <Spinner className="h-4 w-4" />} {editing ? "Guardar" : "Agendar"}
                   </button>

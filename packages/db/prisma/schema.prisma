@@ -617,8 +617,9 @@ model Visit {
   notes         String?
   address       String?
   googleEventId String?     // Google Calendar event ID for sync
-  reminderSent  Boolean     @default(false)
-  createdByAi   Boolean     @default(false)
+  reminderSent         Boolean     @default(false)
+  sendWhatsappReminder Boolean     @default(false)
+  createdByAi          Boolean     @default(false)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

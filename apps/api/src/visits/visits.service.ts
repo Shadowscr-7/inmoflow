@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException, Logger } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { GoogleCalendarService } from "../calendar/google-calendar.service";
-import { Prisma, VisitStatus } from "@inmoflow/db";
+import { Prisma, VisitStatus, LeadStatus } from "@inmoflow/db";
 
 @Injectable()
 export class VisitsService {
@@ -64,28 +64,71 @@ export class VisitsService {
   }
 
   async create(tenantId: string, dto: {
-    leadId: string;
+    leadId?: string;
+    newLeadName?: string;
+    newLeadPhone?: string;
+    newLeadEmail?: string;
     propertyId?: string;
     agentId?: string;
     date: string;
     endDate?: string;
     notes?: string;
     address?: string;
+    sendWhatsappReminder?: boolean;
   }) {
-    // Verify lead
-    const lead = await this.prisma.lead.findFirst({ where: { id: dto.leadId, tenantId } });
-    if (!lead) throw new NotFoundException("Lead not found");
+    let leadId: string;
+
+    if (dto.leadId) {
+      // Verify existing lead belongs to tenant
+      const lead = await this.prisma.lead.findFirst({ where: { id: dto.leadId, tenantId } });
+      if (!lead) throw new NotFoundException("Lead not found");
+      leadId = dto.leadId;
+    } else {
+      // Auto-create a new lead — require at least name or phone
+      if (!dto.newLeadName && !dto.newLeadPhone && !dto.newLeadEmail) {
+        throw new BadRequestException("Provide leadId or at least one of: newLeadName, newLeadPhone, newLeadEmail");
+      }
+
+      // Find the "visita" stage in this tenant's pipeline
+      let stageId: string | undefined;
+      const visitStage = await this.prisma.leadStage.findFirst({
+        where: { tenantId, key: "visita" },
+      });
+      if (visitStage) {
+        stageId = visitStage.id;
+      } else {
+        // Fall back to default stage
+        const defaultStage = await this.prisma.leadStage.findFirst({
+          where: { tenantId, isDefault: true },
+        });
+        stageId = defaultStage?.id;
+      }
+
+      const newLead = await this.prisma.lead.create({
+        data: {
+          tenantId,
+          name: dto.newLeadName,
+          phone: dto.newLeadPhone,
+          email: dto.newLeadEmail,
+          status: LeadStatus.VISIT,
+          stageId,
+          assigneeId: dto.agentId || undefined,
+        },
+      });
+      leadId = newLead.id;
+    }
 
     const visit = await this.prisma.visit.create({
       data: {
         tenantId,
-        leadId: dto.leadId,
+        leadId,
         propertyId: dto.propertyId || undefined,
         agentId: dto.agentId || undefined,
         date: new Date(dto.date),
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         notes: dto.notes,
         address: dto.address,
+        sendWhatsappReminder: dto.sendWhatsappReminder ?? false,
       },
       include: {
         lead: { select: { id: true, name: true, phone: true, email: true } },
