@@ -92,7 +92,14 @@ export class VisitsService {
       // Find the "visita" stage in this tenant's pipeline
       let stageId: string | undefined;
       const visitStage = await this.prisma.leadStage.findFirst({
-        where: { tenantId, key: "visita" },
+        where: {
+          tenantId,
+          OR: [
+            { key: { equals: "visita", mode: "insensitive" } },
+            { name: { contains: "visita", mode: "insensitive" } },
+          ],
+        },
+        orderBy: { order: "asc" },
       });
       if (visitStage) {
         stageId = visitStage.id;

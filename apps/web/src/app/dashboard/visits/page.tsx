@@ -25,12 +25,13 @@ const STATUS_ICONS: Record<string, typeof Calendar> = {
   SCHEDULED: Clock, CONFIRMED: Check, COMPLETED: Check, CANCELLED: XCircle, NO_SHOW: AlertTriangle,
 };
 
-function getWeekDays(date: Date): Date[] {
+function get4Weeks(date: Date): Date[] {
   const d = new Date(date);
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return Array.from({ length: 7 }, (_, i) => {
+  d.setHours(0, 0, 0, 0);
+  return Array.from({ length: 28 }, (_, i) => {
     const dd = new Date(d);
     dd.setDate(d.getDate() + i);
     return dd;
@@ -42,15 +43,22 @@ function isSameDay(a: Date, b: Date) {
 }
 
 function formatTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  return new Date(dateStr).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function formatDate(d: Date) {
-  return d.toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short" });
+  if (d.getDate() === 1) return d.toLocaleDateString("es", { day: "numeric", month: "short" });
+  return d.toLocaleDateString("es", { day: "numeric" });
+}
+
+/** Convert a UTC ISO date string to a datetime-local input value (local time) */
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function VisitsPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -66,9 +74,9 @@ export default function VisitsPage() {
   const [stats, setStats] = useState<{ today: number; thisWeek: number } | null>(null);
   const [newLeadMode, setNewLeadMode] = useState(false);
 
-  const weekDays = getWeekDays(currentWeek);
-  const from = weekDays[0].toISOString();
-  const to = new Date(weekDays[6].getTime() + 86400000).toISOString();
+  const calendarDays = get4Weeks(currentWeek);
+  const from = calendarDays[0].toISOString();
+  const to = new Date(calendarDays[27].getTime() + 86400000).toISOString();
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -102,9 +110,9 @@ export default function VisitsPage() {
     loadFormData();
     setEditing(null);
     setNewLeadMode(false);
-    const d = day ?? new Date();
+    const d = day ? new Date(day) : new Date();
     d.setHours(10, 0, 0, 0);
-    setForm({ date: d.toISOString().slice(0, 16), status: "SCHEDULED", sendWhatsappReminder: false });
+    setForm({ date: toLocalInput(d), agentId: user?.id, sendWhatsappReminder: false });
     setFormErrors({});
     setShowModal(true);
   };
@@ -114,8 +122,10 @@ export default function VisitsPage() {
     setEditing(v);
     setNewLeadMode(false);
     setForm({
-      leadId: v.leadId, propertyId: v.propertyId ?? "", date: v.date.slice(0, 16),
-      endDate: v.endDate?.slice(0, 16) ?? "", status: v.status, notes: v.notes ?? "", address: v.address ?? "",
+      leadId: v.leadId, propertyId: v.propertyId ?? "",
+      date: toLocalInput(new Date(v.date)),
+      endDate: v.endDate ? toLocalInput(new Date(v.endDate)) : "",
+      status: v.status, notes: v.notes ?? "", address: v.address ?? "",
     });
     setFormErrors({});
     setShowModal(true);
@@ -147,8 +157,11 @@ export default function VisitsPage() {
     try {
       const data: Record<string, unknown> = { ...form };
       if (!data.propertyId) delete data.propertyId;
-      if (!data.endDate) delete data.endDate;
       if (!editing) delete data.status;
+      // Convert datetime-local (local time) to UTC ISO before sending
+      if (data.date) data.date = new Date(data.date as string).toISOString();
+      if (data.endDate) data.endDate = new Date(data.endDate as string).toISOString();
+      else delete data.endDate;
 
       if (editing) {
         await api.updateVisit(token, editing.id, data);
@@ -179,7 +192,7 @@ export default function VisitsPage() {
 
   const navigateWeek = (delta: number) => {
     const d = new Date(currentWeek);
-    d.setDate(d.getDate() + delta * 7);
+    d.setDate(d.getDate() + delta * 28);
     setCurrentWeek(d);
   };
 
@@ -220,18 +233,25 @@ export default function VisitsPage() {
           <ChevronRight className="h-5 w-5 text-gray-600 dark:text-gray-300" />
         </button>
         <span className="text-sm text-gray-600 dark:text-gray-400">
-          {weekDays[0].toLocaleDateString("es", { day: "numeric", month: "short" })} — {weekDays[6].toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
+          {calendarDays[0].toLocaleDateString("es", { day: "numeric", month: "short" })} — {calendarDays[27].toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
         </span>
       </div>
 
-      {/* Week grid */}
+      {/* Calendar grid */}
       {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
-        <div className="grid grid-cols-7 gap-2">
-          {weekDays.map((day) => {
+        <div>
+          {/* Day headers */}
+          <div className="grid grid-cols-7 gap-2 mb-1">
+            {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((name) => (
+              <div key={name} className="text-center text-xs font-semibold text-gray-500 dark:text-gray-400 py-1">{name}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+          {calendarDays.map((day) => {
             const dayVisits = visits.filter((v) => isSameDay(new Date(v.date), day));
             const isToday = isSameDay(day, today);
             return (
-              <div key={day.toISOString()} className={`min-h-[140px] rounded-xl border p-2 ${isToday ? "border-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20 dark:border-indigo-600" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
+              <div key={day.toISOString()} className={`min-h-[90px] rounded-xl border p-2 ${isToday ? "border-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20 dark:border-indigo-600" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"}`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-xs font-medium ${isToday ? "text-indigo-600 dark:text-indigo-400" : "text-gray-600 dark:text-gray-400"}`}>
                     {formatDate(day)}
@@ -261,6 +281,7 @@ export default function VisitsPage() {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
