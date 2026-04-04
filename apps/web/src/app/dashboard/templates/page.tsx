@@ -27,7 +27,7 @@ const TEMPLATE_VARIABLES = [
   { key: "notas", label: "Notas", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-600" },
 ];
 
-const EMPTY_FORM = { key: "", name: "", channel: "", content: "", enabled: true, global: false, attachments: [] as TemplateAttachment[] };
+const EMPTY_FORM = { name: "", channel: "", content: "", enabled: true, global: false, attachments: [] as TemplateAttachment[] };
 
 type Scope = "all" | "mine" | "global";
 
@@ -134,13 +134,13 @@ export default function TemplatesPage() {
 
   const openEdit = (t: Template) => {
     setEditing(t);
-    setForm({ key: t.key, name: t.name, channel: t.channel ?? "", content: t.content, enabled: t.enabled, global: t.userId === null, attachments: (t.attachments ?? []) as TemplateAttachment[] });
+    setForm({ name: t.name, channel: t.channel ?? "", content: t.content, enabled: t.enabled, global: t.userId === null, attachments: (t.attachments ?? []) as TemplateAttachment[] });
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.key.trim() || !form.name.trim() || !form.content.trim()) {
-      toast.error("Key, nombre y contenido son obligatorios");
+    if (!form.name.trim() || !form.content.trim()) {
+      toast.error("Nombre y contenido son obligatorios");
       return;
     }
     setSaving(true);
@@ -152,7 +152,6 @@ export default function TemplatesPage() {
         enabled: form.enabled,
         attachments: form.attachments,
       };
-      if (!editing) payload.key = form.key.trim();
       if (isAdmin) payload.global = form.global;
       if (editing) {
         await api.updateTemplate(token!, editing.id, payload);
@@ -261,7 +260,6 @@ export default function TemplatesPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50/80 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-700">
                 <tr>
-                  <th className="table-header">Key</th>
                   <th className="table-header">Nombre</th>
                   <th className="table-header hidden sm:table-cell">Canal</th>
                   <th className="table-header hidden sm:table-cell">Alcance</th>
@@ -273,7 +271,6 @@ export default function TemplatesPage() {
               <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                 {filtered.map((t) => (
                   <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                    <td className="table-cell font-mono text-xs text-brand-600">{t.key}</td>
                     <td className="table-cell font-medium text-gray-900 dark:text-white">{t.name}</td>
                     <td className="table-cell hidden sm:table-cell">
                       {t.channel ? <ChannelBadge channel={t.channel} /> : <span className="text-gray-300">—</span>}
@@ -325,11 +322,6 @@ export default function TemplatesPage() {
           }
         >
           <div className="space-y-4">
-            <div>
-              <label className="label">Key única</label>
-              <input type="text" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} placeholder="welcome_whatsapp" className="input" disabled={!!editing} />
-              {!editing && <p className="text-xs text-gray-400 mt-1">Identificador único, no se puede cambiar</p>}
-            </div>
             <div>
               <label className="label">Nombre</label>
               <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Bienvenida WhatsApp" className="input" />

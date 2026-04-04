@@ -148,6 +148,7 @@ export default function VisitsPage() {
       const data: Record<string, unknown> = { ...form };
       if (!data.propertyId) delete data.propertyId;
       if (!data.endDate) delete data.endDate;
+      if (!editing) delete data.status;
 
       if (editing) {
         await api.updateVisit(token, editing.id, data);
