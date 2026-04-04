@@ -164,6 +164,7 @@ export default function VisitsPage() {
       else delete data.endDate;
 
       if (editing) {
+        delete data.leadId;
         await api.updateVisit(token, editing.id, data);
         toast.success("Visita actualizada");
       } else {
