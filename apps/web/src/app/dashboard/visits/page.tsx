@@ -57,6 +57,28 @@ function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+const COUNTRY_CODES = [
+  { code: "+54", label: "🇦🇷 +54", country: "Argentina" },
+  { code: "+591", label: "🇧🇴 +591", country: "Bolivia" },
+  { code: "+55", label: "🇧🇷 +55", country: "Brasil" },
+  { code: "+56", label: "🇨🇱 +56", country: "Chile" },
+  { code: "+57", label: "🇨🇴 +57", country: "Colombia" },
+  { code: "+506", label: "🇨🇷 +506", country: "Costa Rica" },
+  { code: "+593", label: "🇪🇨 +593", country: "Ecuador" },
+  { code: "+503", label: "🇸🇻 +503", country: "El Salvador" },
+  { code: "+502", label: "🇬🇹 +502", country: "Guatemala" },
+  { code: "+504", label: "🇭🇳 +504", country: "Honduras" },
+  { code: "+52", label: "🇲🇽 +52", country: "México" },
+  { code: "+505", label: "🇳🇮 +505", country: "Nicaragua" },
+  { code: "+507", label: "🇵🇦 +507", country: "Panamá" },
+  { code: "+595", label: "🇵🇾 +595", country: "Paraguay" },
+  { code: "+51", label: "🇵🇪 +51", country: "Perú" },
+  { code: "+1", label: "🇺🇸 +1", country: "USA/Canadá" },
+  { code: "+598", label: "🇺🇾 +598", country: "Uruguay" },
+  { code: "+58", label: "🇻🇪 +58", country: "Venezuela" },
+  { code: "+34", label: "🇪🇸 +34", country: "España" },
+];
+
 export default function VisitsPage() {
   const { token, user } = useAuth();
   const confirm = useConfirm();
@@ -73,6 +95,7 @@ export default function VisitsPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<{ today: number; thisWeek: number } | null>(null);
   const [newLeadMode, setNewLeadMode] = useState(false);
+  const [phoneCountryCode, setPhoneCountryCode] = useState("+54");
 
   const calendarDays = get4Weeks(currentWeek);
   const from = calendarDays[0].toISOString();
@@ -110,6 +133,7 @@ export default function VisitsPage() {
     loadFormData();
     setEditing(null);
     setNewLeadMode(false);
+    setPhoneCountryCode("+54");
     const d = day ? new Date(day) : new Date();
     d.setHours(10, 0, 0, 0);
     setForm({ date: toLocalInput(d), agentId: user?.id, sendWhatsappReminder: false });
@@ -352,9 +376,29 @@ export default function VisitsPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Teléfono</label>
-                      <input value={String(form.newLeadPhone ?? "")} onChange={(e) => setForm({ ...form, newLeadPhone: e.target.value })}
-                        placeholder="Ej: 5491112345678"
-                        className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                      <div className="flex gap-1">
+                        <select
+                          value={phoneCountryCode}
+                          onChange={(e) => {
+                            setPhoneCountryCode(e.target.value);
+                            const num = String(form.newLeadPhone ?? "").replace(/^\+\d+\s*/, "");
+                            setForm({ ...form, newLeadPhone: num ? `${e.target.value}${num}` : "" });
+                          }}
+                          className="border rounded-lg px-2 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white w-28 shrink-0"
+                        >
+                          {COUNTRY_CODES.map((c) => (
+                            <option key={c.code} value={c.code}>{c.label} {c.country}</option>
+                          ))}
+                        </select>
+                        <input
+                          value={String(form.newLeadPhone ?? "").replace(/^\+\d+/, "")}
+                          onChange={(e) => {
+                            const num = e.target.value.replace(/[^\d\s\-()]/g, "");
+                            setForm({ ...form, newLeadPhone: num ? `${phoneCountryCode}${num}` : "" });
+                          }}
+                          placeholder="1112345678"
+                          className="flex-1 border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Email</label>
