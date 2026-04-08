@@ -8,6 +8,21 @@ import { EvolutionProvider } from "../channels/providers/evolution.provider";
 import { TelegramProvider } from "../channels/providers/telegram.provider";
 import { MessageChannel, MessageDirection, EventType, ChannelStatus } from "@inmoflow/db";
 
+/**
+ * Normalize a phone number for WhatsApp / Evolution API.
+ * - Strips non-digit characters and leading `+`.
+ * - If the number already starts with the country code → keep.
+ * - If it starts with `0` (local format) → replace the `0` with the country code.
+ * - Otherwise (no country code, no leading 0) → prepend the country code.
+ */
+function normalizeWhatsAppPhone(raw: string, countryCode: string): string {
+  const digits = raw.replace(/[^\d]/g, "");
+  if (!digits) return raw;
+  if (digits.startsWith(countryCode)) return digits;
+  if (digits.startsWith("0")) return countryCode + digits.slice(1);
+  return countryCode + digits;
+}
+
 @Injectable()
 export class MessagesService {
   private readonly logger = new Logger(MessagesService.name);
@@ -146,8 +161,14 @@ export class MessagesService {
     let to: string | undefined;
 
     if (channel === MessageChannel.WHATSAPP) {
-      to = lead.whatsappFrom ?? lead.phone ?? undefined;
-      if (!to) throw new BadRequestException("Lead has no WhatsApp number");
+      const rawPhone = lead.whatsappFrom ?? lead.phone ?? undefined;
+      if (!rawPhone) throw new BadRequestException("Lead has no WhatsApp number");
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { phoneCountryCode: true },
+      });
+      const countryCode = tenant?.phoneCountryCode ?? "598";
+      to = normalizeWhatsAppPhone(rawPhone, countryCode);
 
       // Find WA channel — MUST use assigned agent's channel. Only fallback for unassigned leads.
       let waChannel = lead.assigneeId

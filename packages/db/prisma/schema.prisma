@@ -115,6 +115,7 @@ model Tenant {
   name                 String
   plan                 Plan     @default(STARTER)
   timezone             String   @default("America/Montevideo")
+  phoneCountryCode     String   @default("598")
   metaUserAccessToken  String?  // Temporary: long-lived user token from OAuth
   /// MercadoLibre OAuth
   meliAccessToken      String?

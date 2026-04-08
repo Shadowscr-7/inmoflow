@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from "@nestjs/common";
+import { randomUUID } from "crypto";
+import { Injectable, NotFoundException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventLogService } from "../event-log/event-log.service";
 import { EventType, MessageChannel, Prisma } from "@inmoflow/db";
@@ -11,7 +12,6 @@ export interface TemplateAttachment {
 }
 
 export interface CreateTemplateDto {
-  key: string;
   name: string;
   channel?: MessageChannel;
   content: string;
@@ -88,18 +88,11 @@ export class TemplatesService {
   }
 
   async create(tenantId: string, dto: CreateTemplateDto, userId?: string) {
-    const existing = await this.prisma.template.findUnique({
-      where: { tenantId_key: { tenantId, key: dto.key } },
-    });
-    if (existing) {
-      throw new ConflictException(`Template with key "${dto.key}" already exists`);
-    }
-
     const template = await this.prisma.template.create({
       data: {
         tenantId,
         userId: userId ?? null,
-        key: dto.key,
+        key: randomUUID(),
         name: dto.name,
         channel: dto.channel,
         content: dto.content,

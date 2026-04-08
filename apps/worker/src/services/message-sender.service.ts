@@ -5,6 +5,21 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ChannelStatus, MessageChannel } from "@inmoflow/db";
 
 /**
+ * Normalize a phone number for WhatsApp / Evolution API.
+ * - Strips non-digit characters and leading `+`.
+ * - If the number already starts with the country code → keep.
+ * - If it starts with `0` (local format) → replace the `0` with the country code.
+ * - Otherwise (no country code, no leading 0) → prepend the country code.
+ */
+function normalizeWhatsAppPhone(raw: string, countryCode: string): string {
+  const digits = raw.replace(/[^\d]/g, "");
+  if (!digits) return raw;
+  if (digits.startsWith(countryCode)) return digits;
+  if (digits.startsWith("0")) return countryCode + digits.slice(1);
+  return countryCode + digits;
+}
+
+/**
  * MessageSenderService — sends queued messages through the correct provider.
  *
  * Determines which channel to use based on the lead's assigned agent,
@@ -161,8 +176,13 @@ export class MessageSenderService {
       return false;
     }
 
-    // Format number for Evolution API
-    const to = phone.replace(/^\+/, "").replace(/[^0-9]/g, "");
+    // Normalize number for Evolution API (add country code if missing)
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { phoneCountryCode: true },
+    });
+    const countryCode = tenant?.phoneCountryCode ?? "598";
+    const to = normalizeWhatsAppPhone(phone, countryCode);
 
     // Call Evolution API — sendMedia if media is present, else sendText
     let url: string;

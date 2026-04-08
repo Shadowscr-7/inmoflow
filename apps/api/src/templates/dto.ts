@@ -18,7 +18,6 @@ export class TemplateAttachmentDto {
 }
 
 export class CreateTemplateDto {
-  @IsString() @IsNotEmpty() key!: string;
   @IsString() @IsNotEmpty() name!: string;
   @IsOptional() @IsEnum(MessageChannel) channel?: MessageChannel;
   @IsString() @IsNotEmpty() content!: string;

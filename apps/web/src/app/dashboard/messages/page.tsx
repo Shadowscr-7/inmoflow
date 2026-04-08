@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Clock,
   Filter,
+  RefreshCw,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
@@ -28,6 +29,7 @@ export default function MessagesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const limit = 50;
 
   // Filters
@@ -110,6 +112,20 @@ export default function MessagesPage() {
   };
 
   const hasFilters = search || directionFilter || statusFilter || channelFilter || assigneeFilter || dateFrom || dateTo;
+
+  const handleRetry = async (msg: MessageHistoryItem) => {
+    if (!token || !msg.lead?.id) return;
+    setRetryingId(msg.id);
+    try {
+      await api.retryMessage(token, msg.lead.id, msg.id);
+      toast.success("Mensaje reenviado");
+      loadMessages();
+    } catch {
+      toast.error("Error al reintentar el envío");
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   const statusBadge = (status: string | null) => {
     switch (status) {
@@ -314,6 +330,7 @@ export default function MessagesPage() {
                   <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 max-w-xs">Contenido</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Error</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Fecha</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -378,6 +395,22 @@ export default function MessagesPage() {
                     {/* Date */}
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
                       {formatDate(msg.createdAt)}
+                    </td>
+
+                    {/* Retry */}
+                    <td className="px-4 py-3">
+                      {msg.status === "failed" && msg.direction === "OUT" && msg.lead?.id ? (
+                        <button
+                          onClick={() => handleRetry(msg)}
+                          disabled={retryingId === msg.id}
+                          title="Reintentar envío"
+                          className="p-1.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${retryingId === msg.id ? "animate-spin" : ""}`} />
+                        </button>
+                      ) : (
+                        <span />
+                      )}
                     </td>
                   </tr>
                 ))}
