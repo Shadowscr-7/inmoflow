@@ -45,8 +45,9 @@ export class MetaWebhookController {
     }
     const signature = req.headers["x-hub-signature-256"] as string | undefined;
     if (!signature) return false;
-    const body = JSON.stringify(req.body);
-    const expected = "sha256=" + crypto.createHmac("sha256", this.appSecret).update(body).digest("hex");
+    const rawBody: Buffer | undefined = (req as any).rawBody;
+    const bodyToSign = rawBody ?? Buffer.from(JSON.stringify(req.body));
+    const expected = "sha256=" + crypto.createHmac("sha256", this.appSecret).update(bodyToSign).digest("hex");
     const sigBuf = Buffer.from(signature);
     const expBuf = Buffer.from(expected);
     return sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);

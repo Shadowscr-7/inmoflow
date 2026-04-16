@@ -14,7 +14,11 @@ async function bootstrap() {
   const port = env.API_PORT;
 
   // Increase body parser limit for CSV import (2 MB)
-  app.use(json({ limit: "3mb" }));
+  // The 'verify' callback stores the raw body buffer so webhooks can verify HMAC signatures
+  app.use(json({
+    limit: "3mb",
+    verify: (req: any, _res, buf) => { req.rawBody = buf; },
+  }));
   app.use(urlencoded({ extended: true, limit: "3mb" }));
 
   // Security headers
