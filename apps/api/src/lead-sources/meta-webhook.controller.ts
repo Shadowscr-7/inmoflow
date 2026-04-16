@@ -154,10 +154,17 @@ export class MetaWebhookController {
     const accessToken = source.metaPageAccessToken ?? process.env.META_PAGE_ACCESS_TOKEN;
     const leadData = await this.fetchLeadData(leadgenId, accessToken ?? undefined);
 
-    // Extract fields from lead data
-    const name = leadData?.full_name ?? leadData?.first_name
-      ? `${leadData.first_name ?? ""} ${leadData.last_name ?? ""}`.trim()
-      : undefined;
+    // Fetch form name from Graph API when source is catch-all (metaFormName = null)
+    // Needed so assign_by_form_name can match the agent from the form name
+    let formName: string | null = source.metaFormName ?? null;
+    if (!formName && accessToken) {
+      formName = await this.fetchFormName(formId, accessToken);
+    }
+
+    // Extract fields from lead data — careful with operator precedence!
+    // leadData?.full_name takes priority; otherwise compose from first+last
+    const name = leadData?.full_name
+      ?? (leadData?.first_name ? `${leadData.first_name} ${leadData.last_name ?? ""}`.trim() : undefined);
     const email = leadData?.email ?? undefined;
     const phone = leadData?.phone_number ?? undefined;
 
@@ -175,7 +182,11 @@ export class MetaWebhookController {
         sourceId: source.id,
         status: "NEW",
         stageId: defaultStage?.id,
-        notes: `Origen: Meta Lead Ad\nForm: ${formId}\nLeadgen ID: ${leadgenId}`,
+        notes: [
+          "Origen: Meta Lead Ad",
+          formName ? `Formulario: ${formName}` : `Form ID: ${formId}`,
+          `Leadgen ID: ${leadgenId}`,
+        ].join("\n"),
       },
     });
 
@@ -199,6 +210,7 @@ export class MetaWebhookController {
       leadgenId,
       pageId,
       formId,
+      formName: formName ?? undefined,
     });
 
     this.logger.log(
@@ -246,6 +258,20 @@ export class MetaWebhookController {
       };
     } catch (err) {
       this.logger.warn(`Graph API fetch failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Fetch a form's display name from Meta Graph API */
+  private async fetchFormName(formId: string, accessToken: string): Promise<string | null> {
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/${formId}?fields=name&access_token=${accessToken}`,
+      );
+      if (!res.ok) return null;
+      const data = await res.json() as { name?: string };
+      return data.name ?? null;
+    } catch {
       return null;
     }
   }

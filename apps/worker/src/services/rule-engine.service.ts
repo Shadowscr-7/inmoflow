@@ -87,7 +87,7 @@ export class RuleEngineService {
       stageKey: lead.stage?.key,
       sourceType: lead.source?.type,
       sourceName: lead.source?.name,
-      formName: lead.source?.metaFormName ?? null,
+      formName: lead.source?.metaFormName ?? (context.formName as string | null) ?? null,
       hasPhone: !!lead.phone,
       hasEmail: !!lead.email,
       intent: lead.intent,
@@ -174,7 +174,7 @@ export class RuleEngineService {
             break; // stop processing this rule's actions — remainder is deferred
           }
 
-          await this.executeAction(tenantId, leadId, action);
+          await this.executeAction(tenantId, leadId, action, evalContext);
           actionsExecuted++;
         } catch (err) {
           this.logger.error(
@@ -380,16 +380,14 @@ export class RuleEngineService {
     tenantId: string,
     leadId: string,
     action: RuleAction,
+    ctx: Record<string, unknown> = {},
   ): Promise<void> {
     switch (action.type) {
       case "assign":
         await this.actionAssign(tenantId, leadId, action);
         break;
       case "assign_by_form_name":
-        await this.actionAssignByFormName(tenantId, leadId);
-        break;
-      case "assign_by_form_name":
-        await this.actionAssignByFormName(tenantId, leadId);
+        await this.actionAssignByFormName(tenantId, leadId, ctx);
         break;
       case "send_template":
         await this.actionSendTemplate(tenantId, leadId, action);
@@ -420,13 +418,13 @@ export class RuleEngineService {
    * Assign the lead to the agent whose name appears in the Meta form name.
    * Form names like "Casa en Bello Horizonte - Javier" → assigns to user named Javier.
    */
-  private async actionAssignByFormName(tenantId: string, leadId: string) {
+  private async actionAssignByFormName(tenantId: string, leadId: string, ctx: Record<string, unknown> = {}) {
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, tenantId },
       include: { source: true },
     });
 
-    const formName = lead?.source?.metaFormName;
+    const formName = lead?.source?.metaFormName ?? (ctx.formName as string | null) ?? null;
     if (!formName) {
       this.logger.debug(`assign_by_form_name: no formName for lead ${leadId}, skipping`);
       return;
