@@ -68,6 +68,10 @@ const CONDITION_FIELDS = [
   ]},
   { value: "primaryChannel", label: "Canal principal", type: "select" as const, options: CHANNEL_OPTIONS },
   { value: "hasAssignee", label: "Tiene agente asignado", type: "boolean" as const },
+  { value: "interesado", label: "Interesado en la propiedad", type: "select" as const, options: [
+    { value: "Si", label: "Sí" },
+    { value: "No", label: "No" },
+  ]},
   { value: "stageKey", label: "Etapa actual", type: "stage" as const },
   { value: "sourceName", label: "Nombre de fuente", type: "text" as const },
   { value: "formName", label: "Nombre del formulario", type: "text" as const },

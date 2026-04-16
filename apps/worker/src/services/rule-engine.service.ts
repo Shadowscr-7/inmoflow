@@ -102,6 +102,10 @@ export class RuleEngineService {
     for (const [k, v] of Object.entries(formFields)) {
       evalContext[`form_${k}`] = v;
     }
+    // Expose canonical interest answer for easy Si/No rules
+    if (formFields["interes"]) {
+      evalContext["interesado"] = formFields["interes"];
+    }
 
     let rulesMatched = 0;
     let actionsExecuted = 0;
@@ -511,27 +515,39 @@ export class RuleEngineService {
     // Parse custom form answers from notes
     const formFields = this.parseFormFields(lead.notes ?? "");
 
-    // Build property description from form answers (type + location)
-    const PROPERTY_TYPE_KEYS = ["tipo_de_propiedad", "propiedad", "tipo", "inmueble"];
-    const LOCATION_KEYS = ["zona", "barrio", "ubicacion", "localidad", "ciudad", "localización", "lugar", "departamento"];
-    const SPANISH_ARTICLES: Record<string, string> = {
-      casa: "la casa", apartamento: "el apartamento", apto: "el apartamento", depto: "el departamento",
-      terreno: "el terreno", local: "el local", "local comercial": "el local comercial",
-      deposito: "el depósito", depósito: "el depósito", galpón: "el galpón", garage: "el garage",
-      oficina: "la oficina", chacra: "la chacra", campo: "el campo", padron: "el padrón",
-    };
-    let propertyType = "";
-    let propertyLocation = "";
-    for (const [k, v] of Object.entries(formFields)) {
-      if (PROPERTY_TYPE_KEYS.some((pk) => k.includes(pk))) propertyType = v;
-      if (LOCATION_KEYS.some((lk) => k.includes(lk))) propertyLocation = v;
-    }
+    // ── {{propiedad}}: extract from form name (strip agent part after " - ")
+    // e.g. "Casa en Venta en Cordón de U$S 138.000 - David" → "Casa en Venta en Cordón de U$S 138.000"
+    const formName: string = lead.source?.metaFormName ?? "";
+    const PROPERTY_PREFIXES = /^(casa|apartamento|apto|terreno|local|depósito|deposito|galpón|galpon|garage|oficina|chacra|campo|ph|penthouse|padrón|padron)/i;
     let propertyDesc = "";
-    if (propertyType) {
-      const article = SPANISH_ARTICLES[propertyType.toLowerCase()] ?? propertyType;
-      propertyDesc = propertyLocation ? `${article} en ${propertyLocation}` : article;
-    } else if (propertyLocation) {
-      propertyDesc = `la propiedad en ${propertyLocation}`;
+    if (formName) {
+      // Strip trailing " - AgentName" (one or two hyphenated words at the end)
+      propertyDesc = formName.replace(/\s*[-–—]\s*[\w][\w\s-]{0,30}$/, "").trim();
+      // If stripping removed too much or left nothing, use the full form name
+      if (!propertyDesc || propertyDesc.length < 3) propertyDesc = formName;
+    }
+    // Fallback: try to find the property type among form field values
+    if (!propertyDesc || !PROPERTY_PREFIXES.test(propertyDesc)) {
+      const PROPERTY_TYPE_KEYS = ["tipo_de_propiedad", "propiedad", "tipo", "inmueble"];
+      const LOCATION_KEYS = ["zona", "barrio", "ubicacion", "localidad", "ciudad", "localización", "lugar", "departamento"];
+      const SPANISH_ARTICLES: Record<string, string> = {
+        casa: "la casa", apartamento: "el apartamento", apto: "el apartamento", depto: "el departamento",
+        terreno: "el terreno", local: "el local", "local comercial": "el local comercial",
+        deposito: "el depósito", depósito: "el depósito", galpón: "el galpón", galpon: "el galpón",
+        garage: "el garage", oficina: "la oficina", chacra: "la chacra", campo: "el campo",
+      };
+      let propertyType = "";
+      let propertyLocation = "";
+      for (const [k, v] of Object.entries(formFields)) {
+        if (PROPERTY_TYPE_KEYS.some((pk) => k.includes(pk))) propertyType = v;
+        if (LOCATION_KEYS.some((lk) => k.includes(lk))) propertyLocation = v;
+      }
+      if (propertyType) {
+        const article = SPANISH_ARTICLES[propertyType.toLowerCase()] ?? propertyType;
+        propertyDesc = propertyLocation ? `${article} en ${propertyLocation}` : article;
+      } else if (propertyLocation) {
+        propertyDesc = `la propiedad en ${propertyLocation}`;
+      }
     }
     propertyDesc = propertyDesc || lead.intent || "";
 
@@ -656,7 +672,17 @@ export class RuleEngineService {
       const match = line.match(/^[•\-]\s+(.+?):\s+(.+)$/);
       if (match) {
         const key = match[1].trim().toLowerCase().replace(/\s+/g, "_");
-        result[key] = match[2].trim();
+        const value = match[2].trim();
+        result[key] = value;
+
+        // Normalize Si/No qualifying questions to a canonical "interes" key.
+        // Detects any field whose key contains "interesa" or "contacto",
+        // OR any field with a binary Si/No value as a fallback.
+        const isSiNo = /^(si|sí|no)$/i.test(value);
+        const isQualifier = /interesa|contacto|agente/.test(key);
+        if (isSiNo && (isQualifier || !("interes" in result))) {
+          result["interes"] = value.toLowerCase().startsWith("s") ? "Si" : "No";
+        }
       }
     }
     return result;
