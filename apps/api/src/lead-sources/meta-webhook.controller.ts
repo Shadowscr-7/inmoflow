@@ -173,6 +173,17 @@ export class MetaWebhookController {
       where: { tenantId, isDefault: true },
     });
 
+    // Build notes including custom form answers
+    const customLines = Object.entries(leadData?.customFields ?? {})
+      .map(([k, v]) => `• ${k.replace(/_/g, " ")}: ${v}`);
+
+    const noteLines = [
+      "Origen: Meta Lead Ad",
+      formName ? `Formulario: ${formName}` : `Form ID: ${formId}`,
+      `Leadgen ID: ${leadgenId}`,
+      ...(customLines.length > 0 ? ["", "Respuestas del formulario:", ...customLines] : []),
+    ];
+
     const lead = await this.prisma.lead.create({
       data: {
         tenantId,
@@ -182,11 +193,7 @@ export class MetaWebhookController {
         sourceId: source.id,
         status: "NEW",
         stageId: defaultStage?.id,
-        notes: [
-          "Origen: Meta Lead Ad",
-          formName ? `Formulario: ${formName}` : `Form ID: ${formId}`,
-          `Leadgen ID: ${leadgenId}`,
-        ].join("\n"),
+        notes: noteLines.join("\n"),
       },
     });
 
@@ -249,12 +256,20 @@ export class MetaWebhookController {
         fields[f.name] = f.values?.[0] ?? "";
       }
 
+      // Separate standard fields from custom question answers
+      const STANDARD_FIELDS = new Set(["full_name", "first_name", "last_name", "email", "phone_number", "phone"]);
+      const customFields: Record<string, string> = {};
+      for (const [key, val] of Object.entries(fields)) {
+        if (!STANDARD_FIELDS.has(key) && val) customFields[key] = val;
+      }
+
       return {
         full_name: fields["full_name"] ?? undefined,
         first_name: fields["first_name"] ?? undefined,
         last_name: fields["last_name"] ?? undefined,
         email: fields["email"] ?? undefined,
         phone_number: fields["phone_number"] ?? undefined,
+        customFields,
       };
     } catch (err) {
       this.logger.warn(`Graph API fetch failed: ${(err as Error).message}`);
@@ -308,4 +323,5 @@ interface MetaLeadData {
   last_name?: string;
   email?: string;
   phone_number?: string;
+  customFields?: Record<string, string>;
 }

@@ -208,11 +208,30 @@ export class LeadsController {
     const email = leadData["email"] ?? null;
     const phone = leadData["phone_number"] ?? null;
 
+    // Separate standard fields from custom question answers
+    const STANDARD_FIELDS = new Set(["full_name", "first_name", "last_name", "email", "phone_number", "phone"]);
+    const customFields: Record<string, string> = {};
+    for (const [key, val] of Object.entries(leadData)) {
+      if (!STANDARD_FIELDS.has(key) && val) customFields[key] = val;
+    }
+
     // Only update fields that Meta provided and that are missing/generic on the lead
     const updates: Record<string, unknown> = {};
     if (fullName && lead.name?.startsWith("Meta Lead ")) updates.name = fullName;
     if (email && !lead.email) updates.email = email;
     if (phone && !lead.phone) updates.phone = phone;
+
+    // Append custom form answers to notes if not already there
+    const customLines = Object.entries(customFields)
+      .map(([k, v]) => `• ${k.replace(/_/g, " ")}: ${v}`);
+    if (customLines.length > 0) {
+      const currentNotes = (lead as unknown as { notes?: string }).notes ?? "";
+      if (!currentNotes.includes("Respuestas del formulario:")) {
+        updates.notes = [currentNotes, "", "Respuestas del formulario:", ...customLines]
+          .join("\n")
+          .trimStart();
+      }
+    }
 
     if (Object.keys(updates).length > 0) {
       await this.prisma.lead.update({ where: { id }, data: updates });
