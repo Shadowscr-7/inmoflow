@@ -3,6 +3,7 @@ import { Logger } from "@nestjs/common";
 import { Job } from "bullmq";
 import { RuleEngineService } from "../services/rule-engine.service";
 import { LeadScoringService } from "../services/lead-scoring.service";
+import { LeadNotificationService } from "../services/lead-notification.service";
 
 @Processor("lead")
 export class LeadProcessor extends WorkerHost {
@@ -11,6 +12,7 @@ export class LeadProcessor extends WorkerHost {
   constructor(
     private readonly ruleEngine: RuleEngineService,
     private readonly scoring: LeadScoringService,
+    private readonly notification: LeadNotificationService,
   ) {
     super();
   }
@@ -57,6 +59,9 @@ export class LeadProcessor extends WorkerHost {
     );
 
     await this.autoScore(tenantId as string, leadId as string);
+
+    // Send email notification (non-blocking — errors are caught inside)
+    await this.notification.sendNewLeadNotification(tenantId as string, leadId as string);
   }
 
   private async handleLeadUpdated(data: Record<string, unknown>) {

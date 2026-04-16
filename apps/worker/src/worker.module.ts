@@ -14,6 +14,7 @@ import { AiAgentService } from "./services/ai-agent.service";
 import { MessageSenderService } from "./services/message-sender.service";
 import { FollowUpScheduler } from "./services/follow-up.scheduler";
 import { LeadScoringService } from "./services/lead-scoring.service";
+import { LeadNotificationService } from "./services/lead-notification.service";
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { LeadScoringService } from "./services/lead-scoring.service";
     StuckChannelScheduler,
     FollowUpScheduler,
     LeadScoringService,
+    LeadNotificationService,
     LeadProcessor,
     MessageProcessor,
     WorkflowProcessor,
