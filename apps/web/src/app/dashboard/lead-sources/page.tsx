@@ -179,24 +179,48 @@ export default function LeadSourcesPage() {
 
   useEffect(() => { load(); loadMetaStatus(); }, [load, loadMetaStatus]);
 
-  // Listen for OAuth popup callback
+  // Listen for OAuth popup callback (postMessage + localStorage fallback)
   useEffect(() => {
+    const handleOAuthResult = (data: { success: boolean; error?: string }) => {
+      if (oauthSucceededRef.current) return; // already handled
+      if (data.success) {
+        oauthSucceededRef.current = true;
+        toast.success("Meta conectado exitosamente");
+        loadMetaStatus();
+        setMetaStep("select-page");
+        loadMetaPages();
+      } else {
+        toast.error(data.error || "Error al conectar Meta");
+        setMetaStep("idle");
+      }
+    };
+
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "meta-oauth-callback") {
-        if (event.data.success) {
-          oauthSucceededRef.current = true;
-          toast.success("Meta conectado exitosamente");
-          loadMetaStatus();
-          setMetaStep("select-page");
-          loadMetaPages();
-        } else {
-          toast.error(event.data.error || "Error al conectar Meta");
-          setMetaStep("idle");
-        }
+        handleOAuthResult(event.data);
       }
     };
     window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
+
+    // localStorage fallback: poll while popup is open
+    const lsKey = "meta-oauth-result";
+    localStorage.removeItem(lsKey);
+    const lsPoll = setInterval(() => {
+      try {
+        const raw = localStorage.getItem(lsKey);
+        if (!raw) return;
+        const data = JSON.parse(raw) as { type: string; success: boolean; error?: string; ts: number };
+        if (data.type === "meta-oauth-callback") {
+          localStorage.removeItem(lsKey);
+          handleOAuthResult(data);
+        }
+      } catch { /* ignore */ }
+    }, 500);
+
+    return () => {
+      window.removeEventListener("message", handler);
+      clearInterval(lsPoll);
+    };
   }, [token]);
 
   // ─── Meta wizard handlers ─────────────────────────

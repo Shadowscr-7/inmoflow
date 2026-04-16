@@ -82,6 +82,9 @@ export class MetaOAuthController {
       return res.send(this.buildCallbackHtml(false, "Parámetros faltantes"));
     }
 
+    // Allow window.opener access across origin navigation (Meta redirects lose COOP)
+    res.setHeader("Cross-Origin-Opener-Policy", "unsafe-none");
+
     try {
       const result = await this.metaOAuth.handleCallback(code, state);
       return res.send(this.buildCallbackHtml(true, undefined, result.tenantName));
@@ -184,14 +187,20 @@ export class MetaOAuthController {
     <div class="sub">${success ? "Esta ventana se cerrará automáticamente..." : "Cerrá esta ventana e intentá de nuevo."}</div>
   </div>
   <script>
+    var msg = {
+      type: 'meta-oauth-callback',
+      success: ${success},
+      ${error ? `error: ${JSON.stringify(error)},` : ""}
+    };
+    // postMessage to opener (works when COOP allows it)
     if (window.opener) {
-      window.opener.postMessage({
-        type: 'meta-oauth-callback',
-        success: ${success},
-        ${error ? `error: ${JSON.stringify(error)},` : ""}
-      }, '${(process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/'/g, "\\'")}');
+      try { window.opener.postMessage(msg, '*'); } catch(e) {}
     }
-    ${success ? "setTimeout(() => window.close(), 2000);" : ""}
+    // localStorage fallback for when opener is nullified by browser COOP
+    try {
+      localStorage.setItem('meta-oauth-result', JSON.stringify(Object.assign({}, msg, { ts: Date.now() })));
+    } catch(e) {}
+    ${success ? "setTimeout(() => { try { window.close(); } catch(e) {} }, 2000);" : ""}
   </script>
 </body>
 </html>`;
