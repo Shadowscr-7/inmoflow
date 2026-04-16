@@ -37,7 +37,7 @@ export class MetaOAuthService {
     this.appId = process.env.META_APP_ID ?? "";
     this.appSecret = process.env.META_APP_SECRET ?? "";
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+    const apiUrl = process.env.WEBHOOK_BASE_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
     this.redirectUri = `${apiUrl}/api/meta/callback`;
   }
 
