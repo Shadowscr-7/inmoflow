@@ -154,35 +154,70 @@ export class MetaWebhookController {
     const accessToken = source.metaPageAccessToken ?? process.env.META_PAGE_ACCESS_TOKEN;
     const leadData = await this.fetchLeadData(leadgenId, accessToken ?? undefined);
 
-    // Fetch form name from Graph API when source is catch-all (metaFormName = null)
-    // Needed so assign_by_form_name can match the agent from the form name
+    // Fetch form name + questions from Graph API
     let formName: string | null = source.metaFormName ?? null;
-    if (!formName && accessToken) {
-      formName = await this.fetchFormName(formId, accessToken);
+    let formQuestions: FormQuestion[] = [];
+    if (accessToken) {
+      const formDetails = await this.fetchFormDetails(formId, accessToken);
+      if (!formName && formDetails.name) formName = formDetails.name;
+      formQuestions = formDetails.questions;
     }
 
-    // Extract fields from lead data — careful with operator precedence!
-    // leadData?.full_name takes priority; otherwise compose from first+last
+    // Detect "Te interesa que un agente se ponga en contacto por..." question
+    // Find by matching field key in customFields against question keys, or by key pattern
+    const teInteresaKey = this.findTeInteresaKey(leadData?.customFields ?? {}, formQuestions);
+    const teInteresaAnswer = teInteresaKey ? (leadData?.customFields ?? {})[teInteresaKey] : null;
+    const isInterested = !teInteresaAnswer || !/^(no|0)$/i.test(teInteresaAnswer.trim());
+
+    // Extract property title from question label: "...contacto por [PROPERTY] de U$S [PRICE]?"
+    let propertyTitle: string | null = null;
+    if (teInteresaKey) {
+      const question = formQuestions.find((q) => q.key === teInteresaKey);
+      if (question?.label) {
+        const match = question.label.match(/(?:por\s+)(.+?)(?:\s+de\s+[Uu]\$?[Ss]?|\?|$)/i);
+        if (match) propertyTitle = match[1].trim();
+      }
+    }
+
+    // Extract fields from lead data
     const name = leadData?.full_name
       ?? (leadData?.first_name ? `${leadData.first_name} ${leadData.last_name ?? ""}`.trim() : undefined);
     const email = leadData?.email ?? undefined;
     const phone = leadData?.phone_number ?? undefined;
+
+    // Extract agent name from form name: "Casa en venta - Javier" → "Javier" / "Captacion Javier" → "Javier"
+    const agentFromForm = this.extractAgentFromFormName(formName ?? "");
 
     // Auto-create lead
     const defaultStage = await this.prisma.leadStage.findFirst({
       where: { tenantId, isDefault: true },
     });
 
-    // Build notes including custom form answers
+    // Build notes
     const customLines = Object.entries(leadData?.customFields ?? {})
-      .map(([k, v]) => `• ${k.replace(/_/g, " ")}: ${v}`);
+      .filter(([k]) => k !== teInteresaKey) // exclude te_interesa (stored separately below)
+      .map(([k, v]) => {
+        const label = formQuestions.find((q) => q.key === k)?.label ?? k.replace(/_/g, " ");
+        return `• ${label}: ${v}`;
+      });
+
+    if (teInteresaKey && teInteresaAnswer) {
+      customLines.unshift(`• Te interesa contacto: ${teInteresaAnswer}`);
+    }
+    if (propertyTitle) {
+      customLines.unshift(`• Propiedad: ${propertyTitle}`);
+    }
 
     const noteLines = [
       "Origen: Meta Lead Ad",
       formName ? `Formulario: ${formName}` : `Form ID: ${formId}`,
       `Leadgen ID: ${leadgenId}`,
+      ...(agentFromForm ? [`Agente formulario: ${agentFromForm}`] : []),
       ...(customLines.length > 0 ? ["", "Respuestas del formulario:", ...customLines] : []),
     ];
+
+    // If not interested → create as LOST, no notifications
+    const leadStatus = isInterested ? "NEW" : "LOST";
 
     const lead = await this.prisma.lead.create({
       data: {
@@ -191,7 +226,7 @@ export class MetaWebhookController {
         email,
         phone,
         sourceId: source.id,
-        status: "NEW",
+        status: leadStatus,
         stageId: defaultStage?.id,
         notes: noteLines.join("\n"),
       },
@@ -202,26 +237,32 @@ export class MetaWebhookController {
       type: EventType.lead_created,
       entity: "Lead",
       entityId: lead.id,
-      message: `Lead from Meta Lead Ad (page=${pageId}, form=${formId})`,
+      message: `Lead from Meta Lead Ad (page=${pageId}, form=${formId}, interested=${isInterested})`,
       payload: {
         leadgenId,
         pageId,
         formId,
         sourceId: source.id,
+        isInterested,
+        propertyTitle,
+        agentFromForm,
         leadData: leadData ?? undefined,
       },
     });
 
-    await this.eventProducer.emitLeadCreated(tenantId, lead.id, {
-      sourceType: "META_LEAD_AD",
-      leadgenId,
-      pageId,
-      formId,
-      formName: formName ?? undefined,
-    });
+    // Only emit lead.created event (triggers notifications) if interested
+    if (isInterested) {
+      await this.eventProducer.emitLeadCreated(tenantId, lead.id, {
+        sourceType: "META_LEAD_AD",
+        leadgenId,
+        pageId,
+        formId,
+        formName: formName ?? undefined,
+      });
+    }
 
     this.logger.log(
-      `Meta lead created: ${lead.id} for tenant ${tenantId.slice(0, 8)}`,
+      `Meta lead ${isInterested ? "created" : "created (LOST — not interested)"}: ${lead.id} for tenant ${tenantId.slice(0, 8)}`,
     );
   }
 
@@ -277,22 +318,68 @@ export class MetaWebhookController {
     }
   }
 
-  /** Fetch a form's display name from Meta Graph API */
-  private async fetchFormName(formId: string, accessToken: string): Promise<string | null> {
+  /** Fetch form name + questions from Meta Graph API */
+  private async fetchFormDetails(formId: string, accessToken: string): Promise<{ name: string | null; questions: FormQuestion[] }> {
     try {
       const res = await fetch(
-        `https://graph.facebook.com/v19.0/${formId}?fields=name&access_token=${accessToken}`,
+        `https://graph.facebook.com/v19.0/${formId}?fields=name,questions&access_token=${accessToken}`,
       );
-      if (!res.ok) return null;
-      const data = await res.json() as { name?: string };
-      return data.name ?? null;
+      if (!res.ok) return { name: null, questions: [] };
+      const data = await res.json() as { name?: string; questions?: FormQuestion[] };
+      return {
+        name: data.name ?? null,
+        questions: data.questions ?? [],
+      };
     } catch {
-      return null;
+      return { name: null, questions: [] };
     }
+  }
+
+  /**
+   * Find the field key corresponding to "Te interesa que un agente..." question.
+   * Matches by checking question labels or common key patterns.
+   */
+  private findTeInteresaKey(customFields: Record<string, string>, questions: FormQuestion[]): string | null {
+    // Match by question label
+    for (const q of questions) {
+      if (/te\s+interesa/i.test(q.label ?? "") || /contacto\s+por/i.test(q.label ?? "")) {
+        if (q.key in customFields) return q.key;
+      }
+    }
+    // Fallback: match by key pattern
+    for (const key of Object.keys(customFields)) {
+      if (/te.interesa/i.test(key) || /interesa.agente/i.test(key) || /contacto.por/i.test(key)) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Extract agent name from form name.
+   * "Casa en venta - Javier" → "Javier"
+   * "Captacion Javier" → "Javier"
+   * "Locales comerciales - Nacho" → "Nacho"
+   */
+  private extractAgentFromFormName(formName: string): string | null {
+    if (!formName) return null;
+    // Pattern 1: "Something - AgentName"
+    const dashMatch = formName.match(/[-–]\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/u);
+    if (dashMatch) return dashMatch[1].trim();
+    // Pattern 2: "Captacion(es)? AgentName" (last capitalized word)
+    const captacMatch = formName.match(/[Cc]aptaci[oó]n\w*\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/u);
+    if (captacMatch) return captacMatch[1].trim();
+    return null;
   }
 }
 
 // ─── Types ────────────────────────────────────────────
+
+interface FormQuestion {
+  key: string;
+  label?: string;
+  type?: string;
+}
 
 interface MetaWebhookPayload {
   object: string;

@@ -110,6 +110,8 @@ export class LeadNotificationService {
   private buildInteresadoMessage(lead: LeadWithRelations, agentName: string | null): string {
     const name = lead.name ?? "Desconocido";
     const propertyTitle = this.extractPropertyTitle(lead);
+    // Prefer agent from form name over CRM assignee
+    const agent = this.extractAgentFromForm(lead) ?? agentName;
 
     const header = propertyTitle
       ? `✅ Nuevo lead\n${name} está interesad@ en <b>${propertyTitle}</b>`
@@ -120,7 +122,7 @@ export class LeadNotificationService {
     if (lead.email) contactParts.push(lead.email);
     const contactLine = contactParts.length > 0 ? `Contacto: ${contactParts.join(" | ")}` : "";
 
-    const agentLine = agentName ? `Agente: ${agentName}` : "";
+    const agentLine = agent ? `Agente: ${agent}` : "";
 
     const parts = [header];
     if (contactLine) parts.push(contactLine);
@@ -131,7 +133,9 @@ export class LeadNotificationService {
 
   /** Lead de captación: alguien que ofrece/vende su propiedad */
   private buildCaptacionMessage(lead: LeadWithRelations, agentName: string | null): string {
-    const agentLabel = agentName ? ` (${agentName})` : "";
+    // Prefer agent from form name over CRM assignee
+    const agent = this.extractAgentFromForm(lead) ?? agentName;
+    const agentLabel = agent ? ` (${agent})` : "";
     const header = `✅ Captación de Propiedad 🏡${agentLabel}`;
 
     const fields: string[] = [];
@@ -172,11 +176,11 @@ export class LeadNotificationService {
   private extractPropertyTitle(lead: LeadWithRelations): string | null {
     const notes = lead.notes ?? "";
 
-    // Match "Propiedad: ..." or "Título: ..." form fields
-    const propertyMatch = notes.match(/[Pp]ropiedad[:\s]+(.+?)(?:\n|$)/);
+    // First priority: "Propiedad: ..." line in notes (stored by meta-webhook when form question is parsed)
+    const propertyMatch = notes.match(/^[•\-]?\s*[Pp]ropiedad:\s+(.+)$/m);
     if (propertyMatch) return propertyMatch[1].trim();
 
-    const titleMatch = notes.match(/[Tt][ií]tulo[:\s]+(.+?)(?:\n|$)/);
+    const titleMatch = notes.match(/^[•\-]?\s*[Tt][ií]tulo:\s+(.+)$/m);
     if (titleMatch) return titleMatch[1].trim();
 
     // Try from form fields
@@ -186,11 +190,36 @@ export class LeadNotificationService {
     );
     if (propField) return propField[1];
 
-    // Source name as fallback (if it looks like a property, not a generic "Meta Lead Ad")
+    // Source name as fallback: strip agent suffix and use property part
+    // "Casa en venta - Javier" → "Casa en venta"
     const source = lead.source?.name ?? "";
-    if (source && !source.toLowerCase().includes("meta") && !source.toLowerCase().includes("captac")) {
-      return source;
+    if (source && !source.toLowerCase().includes("meta") && !source.toLowerCase().includes("captac") && !source.toLowerCase().includes("todos")) {
+      const withoutAgent = source.replace(/\s*[-–]\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s*$/u, "").trim();
+      return withoutAgent || null;
     }
+
+    return null;
+  }
+
+  /** Extrae el nombre del agente del formulario (desde notas o nombre de fuente) */
+  private extractAgentFromForm(lead: LeadWithRelations): string | null {
+    const notes = lead.notes ?? "";
+
+    // "Agente formulario: Javier" line stored by meta-webhook
+    const agentMatch = notes.match(/^Agente formulario:\s+(.+)$/m);
+    if (agentMatch) return agentMatch[1].trim();
+
+    // Extract from source/form name
+    const sourceName = lead.source?.name ?? "";
+    if (!sourceName) return null;
+
+    // "Something - AgentName"
+    const dashMatch = sourceName.match(/[-–]\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/u);
+    if (dashMatch) return dashMatch[1].trim();
+
+    // "Captacion AgentName"
+    const captacMatch = sourceName.match(/[Cc]aptaci[oó]n\w*\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/u);
+    if (captacMatch) return captacMatch[1].trim();
 
     return null;
   }
