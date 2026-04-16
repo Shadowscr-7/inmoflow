@@ -440,6 +440,7 @@ export class RuleEngineService {
     const formNameLower = formName.toLowerCase();
     // Find agent whose name (or any word of it) appears in the form name
     const matched = agents.find((u) => {
+      if (!u.name) return false;
       const nameParts = u.name.toLowerCase().split(/\s+/);
       return nameParts.some((part) => part.length >= 3 && formNameLower.includes(part));
     });
