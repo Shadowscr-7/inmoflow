@@ -102,10 +102,10 @@ export class RuleEngineService {
     for (const [k, v] of Object.entries(formFields)) {
       evalContext[`form_${k}`] = v;
     }
-    // Expose canonical interest answer for easy Si/No rules
-    if (formFields["interes"]) {
-      evalContext["interesado"] = formFields["interes"];
-    }
+    // Canonical aliases for easy rule conditions
+    if (formFields["tipo_propiedad"]) evalContext["tipo_propiedad"] = formFields["tipo_propiedad"];
+    if (formFields["zona"]) evalContext["zona"] = formFields["zona"];
+    if (formFields["interes"]) evalContext["interesado"] = formFields["interes"];
 
     let rulesMatched = 0;
     let actionsExecuted = 0;
@@ -563,7 +563,9 @@ export class RuleEngineService {
     propertyDesc = propertyDesc || lead.intent || "";
 
     // Build {{formulario}} — all custom form answers in readable format
-    const formularioLines = Object.entries(formFields).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`);
+    const formularioLines = Object.entries(formFields)
+      .filter(([k]) => !["tipo_propiedad", "zona", "interes"].includes(k)) // skip aliases
+      .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`);
     const formulario = formularioLines.join("\n");
 
     // Render placeholders — all available lead variables
@@ -585,6 +587,9 @@ export class RuleEngineService {
       intent: lead.intent ?? "",
       propiedad: propertyDesc,
       formulario,
+      tipo_propiedad: formFields["tipo_propiedad"] ?? "",
+      zona: formFields["zona"] ?? "",
+      interesado: formFields["interes"] ?? "",
       notas: lead.notes ?? "",
       notes: lead.notes ?? "",
       // Expose each form field directly as {{form_<key>}}
@@ -669,8 +674,10 @@ export class RuleEngineService {
 
   /**
    * Parse custom Meta form field answers from lead notes.
-   * Expects lines like "• tipo de propiedad: Casa" after "Respuestas del formulario:".
-   * Returns normalized keys (lowercase, underscores) mapped to raw answer values.
+   * Expects lines like "• ¿qué tipo de propiedad querés vender?: Casa" after "Respuestas del formulario:".
+   * Returns:
+   *  - Normalized keys (lowercase, no accents/punctuation, underscores) → raw answer
+   *  - Canonical semantic aliases: tipo_propiedad, zona, interes
    */
   private parseFormFields(notes: string): Record<string, string> {
     const result: Record<string, string> = {};
@@ -678,22 +685,43 @@ export class RuleEngineService {
     const sectionIdx = notes.indexOf(marker);
     if (sectionIdx === -1) return result;
 
+    const normalizeKey = (raw: string): string =>
+      raw
+        .trim()
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
+        .replace(/[¿?¡!(),;:"']/g, "")                   // remove punctuation
+        .trim()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_]/g, "")                       // only alphanumeric + _
+        .replace(/^_+|_+$/g, "");                         // trim underscores
+
+    const PROPERTY_TYPE_SEEDS = ["tipo", "propiedad", "inmueble", "vender", "alquilar", "venta"];
+    const LOCATION_SEEDS = ["zona", "barrio", "ubica", "donde", "localidad", "ciudad", "lugar", "departamento"];
+    const INTEREST_SEEDS = ["interesa", "contacto", "agente", "ponga", "comunique"];
+
     const section = notes.slice(sectionIdx + marker.length);
     for (const line of section.split("\n")) {
       const match = line.match(/^[•\-]\s+(.+?):\s+(.+)$/);
-      if (match) {
-        const key = match[1].trim().toLowerCase().replace(/\s+/g, "_");
-        const value = match[2].trim();
-        result[key] = value;
+      if (!match) continue;
 
-        // Normalize Si/No qualifying questions to a canonical "interes" key.
-        // Detects any field whose key contains "interesa" or "contacto",
-        // OR any field with a binary Si/No value as a fallback.
-        const isSiNo = /^(si|sí|no)$/i.test(value);
-        const isQualifier = /interesa|contacto|agente/.test(key);
-        if (isSiNo && (isQualifier || !("interes" in result))) {
-          result["interes"] = value.toLowerCase().startsWith("s") ? "Si" : "No";
-        }
+      const rawLabel = match[1].trim();
+      const value = match[2].trim();
+      const key = normalizeKey(rawLabel);
+      if (!key) continue;
+
+      result[key] = value;
+
+      // Canonical aliases based on what the question is about
+      if (PROPERTY_TYPE_SEEDS.some((s) => key.includes(s)) && !("tipo_propiedad" in result)) {
+        result["tipo_propiedad"] = value;
+      }
+      if (LOCATION_SEEDS.some((s) => key.includes(s)) && !("zona" in result)) {
+        result["zona"] = value;
+      }
+      const isSiNo = /^(si|sí|no)$/i.test(value);
+      if (isSiNo && INTEREST_SEEDS.some((s) => key.includes(s))) {
+        result["interes"] = value.toLowerCase().startsWith("s") ? "Si" : "No";
       }
     }
     return result;

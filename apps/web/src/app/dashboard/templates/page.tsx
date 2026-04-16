@@ -24,6 +24,8 @@ const TEMPLATE_VARIABLES = [
   { key: "estado", label: "Estado", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700" },
   { key: "agente", label: "Agente", color: "bg-pink-100 text-pink-700 dark:bg-pink-900/50 dark:text-pink-300 border-pink-200 dark:border-pink-700" },
   { key: "intencion", label: "Intención", color: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700" },
+  { key: "tipo_propiedad", label: "Tipo propiedad", color: "bg-lime-100 text-lime-700 dark:bg-lime-900/50 dark:text-lime-300 border-lime-200 dark:border-lime-700" },
+  { key: "zona", label: "Zona", color: "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300 border-sky-200 dark:border-sky-700" },
   { key: "formulario", label: "Formulario", color: "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300 border-teal-200 dark:border-teal-700" },
   { key: "notas", label: "Notas", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-600" },
 ];
