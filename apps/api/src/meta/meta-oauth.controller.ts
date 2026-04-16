@@ -190,8 +190,8 @@ export class MetaOAuthController {
         success: ${success},
         ${error ? `error: ${JSON.stringify(error)},` : ""}
       }, '${(process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/'/g, "\\'")}');
-      ${success ? "setTimeout(() => window.close(), 2000);" : ""}
     }
+    ${success ? "setTimeout(() => window.close(), 2000);" : ""}
   </script>
 </body>
 </html>`;
