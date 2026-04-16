@@ -1032,7 +1032,7 @@ export const api = {
   getMetaForms(token: string, pageId: string) {
     return apiFetch<{ id: string; name: string; status: string }[]>(`/meta/pages/${pageId}/forms`, { token });
   },
-  connectMetaPageForm(token: string, data: { pageId: string; formId: string; pageName: string; formName: string }) {
+  connectMetaPageForm(token: string, data: { pageId: string; formId?: string; pageName: string; formName?: string }) {
     return apiFetch<LeadSource>("/meta/connect", { token, method: "POST", body: JSON.stringify(data) });
   },
   disconnectMeta(token: string) {

@@ -37,13 +37,26 @@ export class LeadSourcesService {
 
   /**
    * Find a META source by pageId + formId (used by webhook).
+   * First tries exact match, then falls back to catch-all (formId = null = "all forms on page").
    */
   async findByMetaMapping(pageId: string, formId: string) {
-    return this.prisma.leadSource.findFirst({
+    // Exact match first
+    const exact = await this.prisma.leadSource.findFirst({
       where: {
         type: LeadSourceType.META_LEAD_AD,
         metaPageId: pageId,
         metaFormId: formId,
+        enabled: true,
+      },
+    });
+    if (exact) return exact;
+
+    // Catch-all: a source connected for the whole page (no specific form)
+    return this.prisma.leadSource.findFirst({
+      where: {
+        type: LeadSourceType.META_LEAD_AD,
+        metaPageId: pageId,
+        metaFormId: null,
         enabled: true,
       },
     });

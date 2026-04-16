@@ -272,17 +272,25 @@ export default function LeadSourcesPage() {
     setMetaStep("confirming");
   };
 
+  const selectAllForms = () => {
+    setSelectedForm(null);
+    setMetaStep("confirming");
+  };
+
   const confirmMetaConnection = async () => {
-    if (!token || !selectedPage || !selectedForm) return;
+    if (!token || !selectedPage) return;
     setMetaLoading(true);
     try {
       await api.connectMetaPageForm(token, {
         pageId: selectedPage.id,
-        formId: selectedForm.id,
+        formId: selectedForm?.id,
         pageName: selectedPage.name,
-        formName: selectedForm.name,
+        formName: selectedForm?.name,
       });
-      toast.success(`Fuente conectada: ${selectedPage.name} — ${selectedForm.name}`);
+      const label = selectedForm
+        ? `${selectedPage.name} — ${selectedForm.name}`
+        : `${selectedPage.name} (todos los formularios)`;
+      toast.success(`Fuente conectada: ${label}`);
       setShowMetaWizard(false);
       resetMetaWizard();
       load();
@@ -778,13 +786,25 @@ export default function LeadSourcesPage() {
                 <div className="flex items-center justify-center py-10 text-gray-400">
                   <Loader2 className="w-6 h-6 animate-spin mr-2" /> Cargando formularios...
                 </div>
-              ) : metaForms.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <p className="text-sm">Esta página no tiene formularios de Lead Ads.</p>
-                  <p className="text-xs mt-1">Creá un formulario desde Meta Ads Manager y volvé acá.</p>
-                </div>
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {/* Catch-all option */}
+                  <button
+                    onClick={selectAllForms}
+                    className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-indigo-300 bg-indigo-50/60 hover:bg-indigo-100/60 transition text-left group"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                      <Globe className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-indigo-700 dark:text-indigo-300">Todos los formularios de esta página</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Captura leads de cualquier formulario, incluso los que crees en el futuro</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition" />
+                  </button>
+                  {metaForms.length > 0 && (
+                    <p className="text-xs text-gray-400 pt-1 pb-0.5 px-1">O elegí un formulario específico:</p>
+                  )}
                   {metaForms.map((f) => (
                     <button
                       key={f.id}
@@ -804,13 +824,16 @@ export default function LeadSourcesPage() {
                       <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-indigo-500 transition" />
                     </button>
                   ))}
+                  {metaForms.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center pt-2">No hay formularios creados en esta página aún — podés usar la opción de arriba de todas formas.</p>
+                  )}
                 </div>
               )}
             </div>
           )}
 
           {/* Step: Confirm */}
-          {metaStep === "confirming" && selectedPage && selectedForm && (
+          {metaStep === "confirming" && selectedPage && (
             <div className="space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">Revisá la configuración antes de conectar:</p>
               <div className="bg-indigo-50/50 border border-indigo-200 rounded-xl p-5 space-y-3">
@@ -825,14 +848,18 @@ export default function LeadSourcesPage() {
                   <Database className="w-5 h-5 text-purple-600 shrink-0" />
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Formulario de Lead Ads</p>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedForm.name}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {selectedForm ? selectedForm.name : "Todos los formularios (actuales y futuros)"}
+                    </p>
                   </div>
                 </div>
               </div>
               <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4">
                 <p className="text-sm text-emerald-800">
                   <CheckCircle2 className="w-4 h-4 inline mr-1" />
-                  Se creará una fuente de leads que recibirá automáticamente los contactos de este formulario. Cada vez que alguien complete el formulario en tu campaña de Meta, aparecerá como lead nuevo en InmoFlow.
+                  {selectedForm
+                    ? "Se creará una fuente de leads que recibirá automáticamente los contactos de este formulario. Cada vez que alguien complete el formulario en tu campaña de Meta, aparecerá como lead nuevo en InmoFlow."
+                    : "Se creará una fuente de leads que capturará cualquier formulario de esta página, incluyendo los que crees en el futuro. Ideal para no tener que reconectar cada vez que creás una nueva campaña."}
                 </p>
               </div>
             </div>

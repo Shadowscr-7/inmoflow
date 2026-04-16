@@ -253,9 +253,9 @@ export class MetaOAuthService {
     tenantId: string,
     data: {
       pageId: string;
-      formId: string;
+      formId?: string | null;  // null = catch-all (all forms on this page)
       pageName: string;
-      formName: string;
+      formName?: string | null;
     },
   ) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
@@ -289,9 +289,13 @@ export class MetaOAuthService {
         tenantId,
         type: LeadSourceType.META_LEAD_AD,
         metaPageId: data.pageId,
-        metaFormId: data.formId,
+        metaFormId: data.formId ?? null,
       },
     });
+
+    const sourceName = data.formId
+      ? `${data.pageName} — ${data.formName ?? data.formId}`
+      : `${data.pageName} (todos los formularios)`;
 
     if (existing) {
       // Update existing
@@ -300,7 +304,8 @@ export class MetaOAuthService {
         data: {
           metaPageAccessToken: page.access_token,
           metaPageName: data.pageName,
-          metaFormName: data.formName,
+          metaFormName: data.formName ?? null,
+          name: sourceName,
           enabled: true,
         },
       });
@@ -312,11 +317,11 @@ export class MetaOAuthService {
       data: {
         tenantId,
         type: LeadSourceType.META_LEAD_AD,
-        name: `${data.pageName} — ${data.formName}`,
+        name: sourceName,
         metaPageId: data.pageId,
-        metaFormId: data.formId,
+        metaFormId: data.formId ?? null,
         metaPageName: data.pageName,
-        metaFormName: data.formName,
+        metaFormName: data.formName ?? null,
         metaPageAccessToken: page.access_token,
         enabled: true,
       },
@@ -327,7 +332,7 @@ export class MetaOAuthService {
       type: EventType.lead_created,
       entity: "LeadSource",
       entityId: source.id,
-      message: `Meta Lead Ad source connected: ${data.pageName} / ${data.formName}`,
+      message: `Meta Lead Ad source connected: ${sourceName}`,
     });
 
     return source;

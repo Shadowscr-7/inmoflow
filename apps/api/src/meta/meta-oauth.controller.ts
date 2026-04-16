@@ -10,7 +10,7 @@ import {
   UseGuards,
   Logger,
 } from "@nestjs/common";
-import { IsString, MaxLength } from "class-validator";
+import { IsString, MaxLength, IsOptional } from "class-validator";
 import { Response } from "express";
 import { MetaOAuthService } from "./meta-oauth.service";
 import { JwtAuthGuard, TenantGuard, RolesGuard, Roles } from "../auth/guards";
@@ -18,9 +18,9 @@ import { TenantId, CurrentUser } from "../auth/decorators";
 
 class ConnectPageFormDto {
   @IsString() @MaxLength(100) pageId!: string;
-  @IsString() @MaxLength(100) formId!: string;
+  @IsOptional() @IsString() @MaxLength(100) formId?: string;
   @IsString() @MaxLength(200) pageName!: string;
-  @IsString() @MaxLength(200) formName!: string;
+  @IsOptional() @IsString() @MaxLength(200) formName?: string;
 }
 
 @Controller("meta")
