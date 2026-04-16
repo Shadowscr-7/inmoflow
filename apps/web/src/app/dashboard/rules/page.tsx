@@ -370,6 +370,26 @@ export default function RulesPage() {
         </select>
       );
     }
+    if (fieldDef.type === "formField") {
+      return (
+        <>
+          <input
+            type="text"
+            value={condition.fieldName ?? ""}
+            onChange={(e) => updateCondition(idx, { ...condition, fieldName: e.target.value })}
+            placeholder="Nombre del campo (ej: tipo de propiedad)"
+            className="input flex-1"
+          />
+          <input
+            type="text"
+            value={condition.value}
+            onChange={(e) => updateCondition(idx, { value: e.target.value })}
+            placeholder="Valor (ej: Casa)"
+            className="input flex-1"
+          />
+        </>
+      );
+    }
     if (fieldDef.type === "stage") {
       return (
         <select value={condition.value} onChange={(e) => updateCondition(idx, { value: e.target.value })} className="input flex-1">
@@ -548,27 +568,7 @@ export default function RulesPage() {
                         const opt = fieldDef.options!.find((o) => o.value === String(rawValue));
                         if (opt) displayValue = opt.label;
                       }
-                      if (fieldDef?.type === "formField") {
-      return (
-        <>
-          <input
-            type="text"
-            value={condition.fieldName ?? ""}
-            onChange={(e) => updateCondition(idx, { ...condition, fieldName: e.target.value })}
-            placeholder="Nombre del campo (ej: tipo de propiedad)"
-            className="input flex-1"
-          />
-          <input
-            type="text"
-            value={condition.value}
-            onChange={(e) => updateCondition(idx, { value: e.target.value })}
-            placeholder="Valor (ej: Casa)"
-            className="input flex-1"
-          />
-        </>
-      );
-    }
-    if (fieldDef?.type === "stage") {
+                      if (fieldDef?.type === "stage") {
                         const stage = stages.find((s) => s.key === String(rawValue));
                         if (stage) displayValue = stage.name;
                       }

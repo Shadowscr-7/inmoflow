@@ -515,18 +515,29 @@ export class RuleEngineService {
     // Parse custom form answers from notes
     const formFields = this.parseFormFields(lead.notes ?? "");
 
-    // ── {{propiedad}}: extract from form name (strip agent part after " - ")
+    // ── {{propiedad}}: extract from form name or question text
+    // Priority 1: extract text between "contacto por" and "de U$S" from the form question stored in notes
+    // e.g. "...en contacto por la Casa en Venta en Cordón de U$S 138.000?" → "la Casa en Venta en Cordón"
+    // Priority 2: strip the agent suffix from metaFormName
     // e.g. "Casa en Venta en Cordón de U$S 138.000 - David" → "Casa en Venta en Cordón de U$S 138.000"
     const formName: string = lead.source?.metaFormName ?? "";
-    const PROPERTY_PREFIXES = /^(casa|apartamento|apto|terreno|local|depósito|deposito|galpón|galpon|garage|oficina|chacra|campo|ph|penthouse|padrón|padron)/i;
+    const PROPERTY_PREFIXES = /^(casa|apartamento|apto|terreno|local|depósito|deposito|galpón|galpon|garage|oficina|chacra|campo|ph|penthouse|padrón|padron|la |el |los |las )/i;
     let propertyDesc = "";
-    if (formName) {
-      // Strip trailing " - AgentName" (one or two hyphenated words at the end)
+
+    // Try extracting from the qualifier question text: "por <PROPIEDAD> de U$S"
+    const notes = lead.notes ?? "";
+    const questionMatch = notes.match(/(?:contacto\s+por|por\s+la?\s+)\s+(.+?)\s+de\s+[Uu]\$[Ss]/i);
+    if (questionMatch?.[1]) {
+      propertyDesc = questionMatch[1].trim();
+    }
+
+    // Fallback: strip trailing " - AgentName" from form name
+    if (!propertyDesc && formName) {
       propertyDesc = formName.replace(/\s*[-–—]\s*[\w][\w\s-]{0,30}$/, "").trim();
-      // If stripping removed too much or left nothing, use the full form name
       if (!propertyDesc || propertyDesc.length < 3) propertyDesc = formName;
     }
-    // Fallback: try to find the property type among form field values
+
+    // Last fallback: compose from separate tipo/zona fields
     if (!propertyDesc || !PROPERTY_PREFIXES.test(propertyDesc)) {
       const PROPERTY_TYPE_KEYS = ["tipo_de_propiedad", "propiedad", "tipo", "inmueble"];
       const LOCATION_KEYS = ["zona", "barrio", "ubicacion", "localidad", "ciudad", "localización", "lugar", "departamento"];
@@ -544,8 +555,8 @@ export class RuleEngineService {
       }
       if (propertyType) {
         const article = SPANISH_ARTICLES[propertyType.toLowerCase()] ?? propertyType;
-        propertyDesc = propertyLocation ? `${article} en ${propertyLocation}` : article;
-      } else if (propertyLocation) {
+        if (!propertyDesc) propertyDesc = propertyLocation ? `${article} en ${propertyLocation}` : article;
+      } else if (propertyLocation && !propertyDesc) {
         propertyDesc = `la propiedad en ${propertyLocation}`;
       }
     }
