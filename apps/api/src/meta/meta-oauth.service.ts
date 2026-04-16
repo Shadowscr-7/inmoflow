@@ -68,6 +68,8 @@ export class MetaOAuthService {
         "pages_show_list",
         "pages_read_engagement",
         "pages_manage_ads",
+        "pages_manage_metadata",
+        "leads_retrieval",
         "business_management",
       ].join(","),
       response_type: "code",
