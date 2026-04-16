@@ -96,6 +96,13 @@ export class RuleEngineService {
       hasAssignee: !!lead.assigneeId,
     };
 
+    // Expose custom Meta form answers as form_<field_key> in evalContext
+    // so rules can condition on them (e.g. form_tipo_de_propiedad = "Casa")
+    const formFields = this.parseFormFields(lead.notes ?? "");
+    for (const [k, v] of Object.entries(formFields)) {
+      evalContext[`form_${k}`] = v;
+    }
+
     let rulesMatched = 0;
     let actionsExecuted = 0;
     let rulesQueued = 0;
@@ -501,6 +508,37 @@ export class RuleEngineService {
     });
     if (!lead) return;
 
+    // Parse custom form answers from notes
+    const formFields = this.parseFormFields(lead.notes ?? "");
+
+    // Build property description from form answers (type + location)
+    const PROPERTY_TYPE_KEYS = ["tipo_de_propiedad", "propiedad", "tipo", "inmueble"];
+    const LOCATION_KEYS = ["zona", "barrio", "ubicacion", "localidad", "ciudad", "localización", "lugar", "departamento"];
+    const SPANISH_ARTICLES: Record<string, string> = {
+      casa: "la casa", apartamento: "el apartamento", apto: "el apartamento", depto: "el departamento",
+      terreno: "el terreno", local: "el local", "local comercial": "el local comercial",
+      deposito: "el depósito", depósito: "el depósito", galpón: "el galpón", garage: "el garage",
+      oficina: "la oficina", chacra: "la chacra", campo: "el campo", padron: "el padrón",
+    };
+    let propertyType = "";
+    let propertyLocation = "";
+    for (const [k, v] of Object.entries(formFields)) {
+      if (PROPERTY_TYPE_KEYS.some((pk) => k.includes(pk))) propertyType = v;
+      if (LOCATION_KEYS.some((lk) => k.includes(lk))) propertyLocation = v;
+    }
+    let propertyDesc = "";
+    if (propertyType) {
+      const article = SPANISH_ARTICLES[propertyType.toLowerCase()] ?? propertyType;
+      propertyDesc = propertyLocation ? `${article} en ${propertyLocation}` : article;
+    } else if (propertyLocation) {
+      propertyDesc = `la propiedad en ${propertyLocation}`;
+    }
+    propertyDesc = propertyDesc || lead.intent || "";
+
+    // Build {{formulario}} — all custom form answers in readable format
+    const formularioLines = Object.entries(formFields).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`);
+    const formulario = formularioLines.join("\n");
+
     // Render placeholders — all available lead variables
     const variables: Record<string, string> = {
       nombre: lead.name ?? "cliente",
@@ -518,9 +556,12 @@ export class RuleEngineService {
       agent: lead.assignee?.name ?? "",
       intencion: lead.intent ?? "",
       intent: lead.intent ?? "",
-      propiedad: lead.intent ?? "",
+      propiedad: propertyDesc,
+      formulario,
       notas: lead.notes ?? "",
       notes: lead.notes ?? "",
+      // Expose each form field directly as {{form_<key>}}
+      ...Object.fromEntries(Object.entries(formFields).map(([k, v]) => [`form_${k}`, v])),
     };
 
     const rendered = template.content.replace(
@@ -597,6 +638,28 @@ export class RuleEngineService {
     if (mimeType.startsWith("video/")) return "video";
     if (mimeType.startsWith("audio/")) return "audio";
     return "document";
+  }
+
+  /**
+   * Parse custom Meta form field answers from lead notes.
+   * Expects lines like "• tipo de propiedad: Casa" after "Respuestas del formulario:".
+   * Returns normalized keys (lowercase, underscores) mapped to raw answer values.
+   */
+  private parseFormFields(notes: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    const marker = "Respuestas del formulario:";
+    const sectionIdx = notes.indexOf(marker);
+    if (sectionIdx === -1) return result;
+
+    const section = notes.slice(sectionIdx + marker.length);
+    for (const line of section.split("\n")) {
+      const match = line.match(/^[•\-]\s+(.+?):\s+(.+)$/);
+      if (match) {
+        const key = match[1].trim().toLowerCase().replace(/\s+/g, "_");
+        result[key] = match[2].trim();
+      }
+    }
+    return result;
   }
 
   private async actionChangeStatus(tenantId: string, leadId: string, action: RuleAction) {

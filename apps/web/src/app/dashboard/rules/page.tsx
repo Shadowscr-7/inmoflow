@@ -53,6 +53,8 @@ interface Condition {
   field: string;
   operator: string;
   value: string;
+  /** Only used when field === "formField": the Meta form field name (e.g. "tipo de propiedad") */
+  fieldName?: string;
 }
 
 const CONDITION_FIELDS = [
@@ -69,6 +71,7 @@ const CONDITION_FIELDS = [
   { value: "stageKey", label: "Etapa actual", type: "stage" as const },
   { value: "sourceName", label: "Nombre de fuente", type: "text" as const },
   { value: "formName", label: "Nombre del formulario", type: "text" as const },
+  { value: "formField", label: "Respuesta del formulario", type: "formField" as const },
   { value: "intent", label: "Intención", type: "text" as const },
   { value: "messageContent", label: "Contenido del mensaje", type: "text" as const },
   { value: "noResponseDays", label: "Días sin respuesta", type: "number" as const },
@@ -130,6 +133,13 @@ function conditionsToJson(conditions: Condition[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const c of conditions) {
     if (!c.field || !c.value) continue;
+    // formField: encode as form_<normalized_fieldname> key
+    if (c.field === "formField") {
+      if (!c.fieldName?.trim()) continue;
+      const key = `form_${c.fieldName.trim().toLowerCase().replace(/\s+/g, "_")}`;
+      result[key] = c.operator === "equals" ? c.value : { [c.operator]: c.value };
+      continue;
+    }
     if (c.operator === "equals") {
       result[c.field] = c.value;
     } else {
@@ -142,13 +152,20 @@ function conditionsToJson(conditions: Condition[]): Record<string, unknown> {
 function jsonToConditions(json: Record<string, unknown>): Condition[] {
   const conditions: Condition[] = [];
   for (const [field, value] of Object.entries(json)) {
+    // form_<key> → formField condition with fieldName
+    let condField = field;
+    let fieldName: string | undefined;
+    if (field.startsWith("form_")) {
+      condField = "formField";
+      fieldName = field.slice(5).replace(/_/g, " ");
+    }
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const entries = Object.entries(value as Record<string, unknown>);
       if (entries.length > 0) {
-        conditions.push({ field, operator: entries[0][0], value: String(entries[0][1]) });
+        conditions.push({ field: condField, operator: entries[0][0], value: String(entries[0][1]), fieldName });
       }
     } else {
-      conditions.push({ field, operator: "equals", value: String(value) });
+      conditions.push({ field: condField, operator: "equals", value: String(value), fieldName });
     }
   }
   return conditions;
@@ -504,8 +521,11 @@ export default function RulesPage() {
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     <span className="text-xs font-medium text-gray-500 dark:text-gray-400">SI:</span>
                     {Object.entries(r.conditions).map(([k, v]) => {
+                      const isFormField = k.startsWith("form_");
                       const fieldDef = CONDITION_FIELDS.find((f) => f.value === k);
-                      const label = fieldDef?.label ?? k;
+                      const label = isFormField
+                        ? `Formulario: ${k.slice(5).replace(/_/g, " ")}`
+                        : (fieldDef?.label ?? k);
                       let operatorLabel = "=";
                       let rawValue: unknown = v;
 
@@ -524,7 +544,27 @@ export default function RulesPage() {
                         const opt = fieldDef.options!.find((o) => o.value === String(rawValue));
                         if (opt) displayValue = opt.label;
                       }
-                      if (fieldDef?.type === "stage") {
+                      if (fieldDef?.type === "formField") {
+      return (
+        <>
+          <input
+            type="text"
+            value={condition.fieldName ?? ""}
+            onChange={(e) => updateCondition(idx, { ...condition, fieldName: e.target.value })}
+            placeholder="Nombre del campo (ej: tipo de propiedad)"
+            className="input flex-1"
+          />
+          <input
+            type="text"
+            value={condition.value}
+            onChange={(e) => updateCondition(idx, { value: e.target.value })}
+            placeholder="Valor (ej: Casa)"
+            className="input flex-1"
+          />
+        </>
+      );
+    }
+    if (fieldDef?.type === "stage") {
                         const stage = stages.find((s) => s.key === String(rawValue));
                         if (stage) displayValue = stage.name;
                       }
