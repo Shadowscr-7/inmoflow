@@ -68,6 +68,7 @@ export class MetaOAuthService {
         "pages_show_list",
         "pages_read_engagement",
         "pages_manage_ads",
+        "business_management",
       ].join(","),
       response_type: "code",
     });
@@ -167,12 +168,50 @@ export class MetaOAuthService {
       limit: "100",
     });
 
-    return (res.data ?? []).map((p) => ({
+    const classicPages: MetaPage[] = (res.data ?? []).map((p) => ({
       id: p.id,
       name: p.name,
       access_token: p.access_token,
       category: p.category,
     }));
+
+    // Also fetch pages managed via Meta Business Suite (New Pages Experience)
+    // These don't appear in /me/accounts but are accessible via /me/businesses
+    const businessPages: MetaPage[] = [];
+    try {
+      const businesses = await this.graphFetch<{ data: { id: string; name: string }[] }>("/me/businesses", {
+        access_token: token,
+        fields: "id,name",
+        limit: "50",
+      });
+      for (const biz of businesses.data ?? []) {
+        try {
+          const bPages = await this.graphFetch<{ data: MetaPage[] }>(`/${biz.id}/owned_pages`, {
+            access_token: token,
+            fields: "id,name,access_token,category",
+            limit: "100",
+          });
+          for (const p of bPages.data ?? []) {
+            if (!classicPages.find((c) => c.id === p.id)) {
+              businessPages.push({
+                id: p.id,
+                name: p.name,
+                access_token: p.access_token,
+                category: p.category,
+              });
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`Could not fetch pages for business ${biz.id}: ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Could not fetch businesses (scope may be missing): ${(err as Error).message}`);
+    }
+
+    const all = [...classicPages, ...businessPages];
+    this.logger.log(`Meta pages found: ${all.length} (${classicPages.length} classic, ${businessPages.length} via Business)`);
+    return all;
   }
 
   // ─── Step 4: List forms for a page ─────────────────
