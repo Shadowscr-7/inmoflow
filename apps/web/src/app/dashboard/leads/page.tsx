@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { api, type Lead, type User } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Plus, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { StatusBadge, PageHeader, Modal, EmptyState, TableSkeleton, useToast } from "@/components/ui";
 
 export default function LeadsPage() {
@@ -19,6 +19,7 @@ export default function LeadsPage() {
   const [page, setPage] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const limit = 25;
 
   // Debounce search input 300ms
@@ -55,6 +56,23 @@ export default function LeadsPage() {
   }, [token]);
 
   const totalPages = Math.ceil(total / limit);
+
+  const handleMetaResync = async (leadId: string) => {
+    if (!token || syncingId) return;
+    setSyncingId(leadId);
+    try {
+      const result = await api.metaResyncLead(token, leadId);
+      if (result.updated) {
+        toast.success(`Datos actualizados: ${result.fields?.join(", ") ?? ""}`); 
+        await loadLeads();
+      } else {
+        toast.error(result.reason ?? "No se pudo sincronizar");
+      }
+    } catch {
+      toast.error("Error al sincronizar con Meta");
+    }
+    setSyncingId(null);
+  };
 
   return (
     <>
@@ -129,9 +147,21 @@ export default function LeadsPage() {
                 {leads.map((lead) => (
                   <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                     <td className="table-cell">
-                      <Link href={`/dashboard/leads/${lead.id}`} className="font-medium text-brand-600 hover:text-brand-700 hover:underline">
-                        {lead.name ?? "Sin nombre"}
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link href={`/dashboard/leads/${lead.id}`} className="font-medium text-brand-600 hover:text-brand-700 hover:underline">
+                          {lead.name ?? "Sin nombre"}
+                        </Link>
+                        {lead.name?.startsWith("Meta Lead ") && (
+                          <button
+                            onClick={(e) => { e.preventDefault(); handleMetaResync(lead.id); }}
+                            disabled={syncingId === lead.id}
+                            title="Re-sincronizar datos desde Meta"
+                            className="p-0.5 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${syncingId === lead.id ? "animate-spin" : ""}`} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="table-cell text-gray-500 dark:text-gray-400">
                       {lead.phone ?? lead.email ?? "—"}

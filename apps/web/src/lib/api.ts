@@ -1038,6 +1038,9 @@ export const api = {
   disconnectMeta(token: string) {
     return apiFetch<{ ok: boolean }>("/meta/disconnect", { token, method: "DELETE" });
   },
+  metaResyncLead(token: string, leadId: string) {
+    return apiFetch<{ updated: boolean; fields?: string[]; reason?: string }>(`/leads/${leadId}/meta-resync`, { token, method: "POST" });
+  },
 
   // ─── AI Agent ─────────────────────────────────────
   getAiConfig(token: string) {
