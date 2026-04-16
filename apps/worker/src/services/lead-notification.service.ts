@@ -19,14 +19,6 @@ export class LeadNotificationService {
   constructor(private readonly prisma: PrismaService) {}
 
   async sendNewLeadNotification(tenantId: string, leadId: string): Promise<void> {
-    const from = process.env.NOTIFICATION_EMAIL_USER ?? "jgomez@aivanguardlabs.com";
-    const to = process.env.NOTIFICATION_EMAIL_TO ?? from;
-
-    if (!process.env.NOTIFICATION_EMAIL_PASS) {
-      this.logger.warn("NOTIFICATION_EMAIL_PASS not set — skipping lead email notification");
-      return;
-    }
-
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, tenantId },
       include: {
@@ -41,8 +33,24 @@ export class LeadNotificationService {
     if (!lead) return;
 
     const agentName = lead.assignee?.name ?? lead.assignee?.email ?? null;
-    const subject = `Nuevo Lead - ${agentName ?? "Sin Agente asignado"}`;
 
+    // Send email notification
+    await this.sendEmailNotification(lead, agentName);
+
+    // Send Telegram notification
+    await this.sendTelegramNotification(lead, agentName);
+  }
+
+  private async sendEmailNotification(lead: LeadWithRelations, agentName: string | null): Promise<void> {
+    const from = process.env.NOTIFICATION_EMAIL_USER ?? "jgomez@aivanguardlabs.com";
+    const to = process.env.NOTIFICATION_EMAIL_TO ?? from;
+
+    if (!process.env.NOTIFICATION_EMAIL_PASS) {
+      this.logger.warn("NOTIFICATION_EMAIL_PASS not set — skipping lead email notification");
+      return;
+    }
+
+    const subject = `Nuevo Lead - ${agentName ?? "Sin Agente asignado"}`;
     const html = this.buildHtml(lead, agentName);
 
     try {
@@ -52,10 +60,116 @@ export class LeadNotificationService {
         subject,
         html,
       });
-      this.logger.log(`Lead notification sent for lead ${leadId} → ${to}`);
+      this.logger.log(`Lead email notification sent for lead ${lead.id} → ${to}`);
     } catch (err) {
-      this.logger.error(`Failed to send lead notification: ${(err as Error).message}`);
+      this.logger.error(`Failed to send lead email notification: ${(err as Error).message}`);
     }
+  }
+
+  private async sendTelegramNotification(lead: LeadWithRelations, agentName: string | null): Promise<void> {
+    const botToken = process.env.NOTIFY_TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.NOTIFY_TELEGRAM_CHAT_ID;
+
+    if (!botToken || !chatId) {
+      return; // Telegram notifications not configured
+    }
+
+    const text = this.buildTelegramMessage(lead, agentName);
+
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${botToken}/sendMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+        },
+      );
+      if (!res.ok) {
+        const body = await res.text();
+        this.logger.warn(`Telegram notification failed: ${res.status} ${body}`);
+      } else {
+        this.logger.log(`Lead Telegram notification sent for lead ${lead.id}`);
+      }
+    } catch (err) {
+      this.logger.error(`Failed to send lead Telegram notification: ${(err as Error).message}`);
+    }
+  }
+
+  private buildTelegramMessage(lead: LeadWithRelations, agentName: string | null): string {
+    const name = lead.name ?? "Desconocido";
+
+    // Detect property interest from notes or source name
+    const propertyInterest = this.extractPropertyInterest(lead);
+    const sourceName = lead.source?.name ?? null;
+
+    // Build first line
+    let firstLine: string;
+    if (propertyInterest) {
+      firstLine = `<b>✅ Nuevo lead</b>\n${name} está interesad@ en <b>${propertyInterest}</b>`;
+    } else if (sourceName) {
+      firstLine = `<b>✅ Nuevo lead</b>\n${name} — Captación desde <b>${sourceName}</b>`;
+    } else {
+      firstLine = `<b>✅ Nuevo lead</b>\n${name}`;
+    }
+
+    // Contact info
+    const contactParts: string[] = [];
+    if (lead.phone) contactParts.push(lead.phone);
+    if (lead.email) contactParts.push(lead.email);
+    const contactLine = contactParts.length > 0
+      ? `📞 <b>Contacto:</b> ${contactParts.join(" | ")}`
+      : "";
+
+    // Agent
+    const agentLine = agentName ? `👤 <b>Agente:</b> ${agentName}` : "";
+
+    // Additional form fields from notes
+    const formFields = this.extractFormFields(lead.notes ?? "");
+    const formLines = formFields
+      .filter(([k]) => !["origen", "form", "leadgen id"].includes(k.toLowerCase()))
+      .map(([k, v]) => `• <b>${this.capitalize(k)}:</b> ${v}`)
+      .join("\n");
+
+    const parts = [firstLine];
+    if (formLines) parts.push(formLines);
+    if (contactLine) parts.push(contactLine);
+    if (agentLine) parts.push(agentLine);
+
+    return parts.join("\n\n");
+  }
+
+  private extractPropertyInterest(lead: LeadWithRelations): string | null {
+    // Check source name for property-related hints
+    const sourceName = lead.source?.name ?? "";
+    if (sourceName && sourceName.toLowerCase().includes("propiedad")) {
+      return null; // let source name be used instead
+    }
+
+    // Check notes for a property title field
+    const notes = lead.notes ?? "";
+    const propertyMatch = notes.match(/[Pp]ropiedad[:\s]+(.+?)(?:\n|$)/);
+    if (propertyMatch) return propertyMatch[1].trim();
+
+    const titleMatch = notes.match(/[Tt]ítulo[:\s]+(.+?)(?:\n|$)/);
+    if (titleMatch) return titleMatch[1].trim();
+
+    return null;
+  }
+
+  private extractFormFields(notes: string): [string, string][] {
+    // Try "Respuestas del formulario:" section
+    const markerIdx = notes.indexOf("Respuestas del formulario:");
+    if (markerIdx !== -1) {
+      return this.parseNotesSection(notes);
+    }
+    // Also try bullet/dash lines anywhere
+    const rows: [string, string][] = [];
+    for (const line of notes.split("\n")) {
+      const m = line.match(/^[•\-]\s+(.+?):\s+(.+)$/);
+      if (m) rows.push([m[1].trim(), m[2].trim()]);
+    }
+    return rows;
   }
 
   // ─── HTML builder ───────────────────────────────────
