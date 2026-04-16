@@ -21,6 +21,7 @@ const TRIGGER_OPTIONS = [
 
 const ACTION_TYPES = [
   { value: "assign", label: "Asignar agente", icon: "👤", description: "Asignar un agente al lead" },
+  { value: "assign_by_form_name", label: "Asignar por nombre de formulario", icon: "🎯", description: "Asigna automáticamente al agente cuyo nombre aparece en el formulario de Meta" },
   { value: "send_template", label: "Enviar plantilla", icon: "📄", description: "Enviar una plantilla predefinida" },
   { value: "change_status", label: "Cambiar estado", icon: "🏷️", description: "Cambiar el estado del lead" },
   { value: "change_stage", label: "Cambiar etapa", icon: "📊", description: "Mover el lead a otra etapa del embudo" },
@@ -67,6 +68,7 @@ const CONDITION_FIELDS = [
   { value: "hasAssignee", label: "Tiene agente asignado", type: "boolean" as const },
   { value: "stageKey", label: "Etapa actual", type: "stage" as const },
   { value: "sourceName", label: "Nombre de fuente", type: "text" as const },
+  { value: "formName", label: "Nombre del formulario", type: "text" as const },
   { value: "intent", label: "Intención", type: "text" as const },
   { value: "messageContent", label: "Contenido del mensaje", type: "text" as const },
   { value: "noResponseDays", label: "Días sin respuesta", type: "number" as const },
@@ -386,6 +388,12 @@ export default function RulesPage() {
               <option key={u.id} value={u.id}>{u.name || u.email} ({u.role})</option>
             ))}
           </select>
+        );
+      case "assign_by_form_name":
+        return (
+          <p className="text-xs text-gray-500 dark:text-gray-400 italic py-1">
+            Detecta automáticamente el agente buscando su nombre en el nombre del formulario de Meta (ej: "Propiedad - Javier" → asigna a Javier).
+          </p>
         );
       case "send_template":
         return (

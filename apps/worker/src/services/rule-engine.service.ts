@@ -87,6 +87,7 @@ export class RuleEngineService {
       stageKey: lead.stage?.key,
       sourceType: lead.source?.type,
       sourceName: lead.source?.name,
+      formName: lead.source?.metaFormName ?? null,
       hasPhone: !!lead.phone,
       hasEmail: !!lead.email,
       intent: lead.intent,
@@ -384,6 +385,12 @@ export class RuleEngineService {
       case "assign":
         await this.actionAssign(tenantId, leadId, action);
         break;
+      case "assign_by_form_name":
+        await this.actionAssignByFormName(tenantId, leadId);
+        break;
+      case "assign_by_form_name":
+        await this.actionAssignByFormName(tenantId, leadId);
+        break;
       case "send_template":
         await this.actionSendTemplate(tenantId, leadId, action);
         break;
@@ -408,6 +415,47 @@ export class RuleEngineService {
   }
 
   // ─── Individual actions ────────────────────────────
+
+  /**
+   * Assign the lead to the agent whose name appears in the Meta form name.
+   * Form names like "Casa en Bello Horizonte - Javier" → assigns to user named Javier.
+   */
+  private async actionAssignByFormName(tenantId: string, leadId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, tenantId },
+      include: { source: true },
+    });
+
+    const formName = lead?.source?.metaFormName;
+    if (!formName) {
+      this.logger.debug(`assign_by_form_name: no formName for lead ${leadId}, skipping`);
+      return;
+    }
+
+    const agents = await this.prisma.user.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true },
+    });
+
+    const formNameLower = formName.toLowerCase();
+    // Find agent whose name (or any word of it) appears in the form name
+    const matched = agents.find((u) => {
+      const nameParts = u.name.toLowerCase().split(/\s+/);
+      return nameParts.some((part) => part.length >= 3 && formNameLower.includes(part));
+    });
+
+    if (!matched) {
+      this.logger.warn(`assign_by_form_name: no agent name found in formName "${formName}" for lead ${leadId}`);
+      return;
+    }
+
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: { assigneeId: matched.id },
+    });
+
+    this.logger.log(`assign_by_form_name: assigned lead ${leadId} to ${matched.name} (matched "${formName}")`);
+  }
 
   private async actionAssign(tenantId: string, leadId: string, action: RuleAction) {
     let userId = action.userId;
