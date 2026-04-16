@@ -148,6 +148,7 @@ export default function LeadSourcesPage() {
   const [metaLoading, setMetaLoading] = useState(false);
   const [showMetaWizard, setShowMetaWizard] = useState(false);
   const popupRef = useRef<Window | null>(null);
+  const oauthSucceededRef = useRef(false);
 
   const isAdmin = user?.role === "BUSINESS" || user?.role === "ADMIN";
 
@@ -183,6 +184,7 @@ export default function LeadSourcesPage() {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "meta-oauth-callback") {
         if (event.data.success) {
+          oauthSucceededRef.current = true;
           toast.success("Meta conectado exitosamente");
           loadMetaStatus();
           setMetaStep("select-page");
@@ -214,11 +216,12 @@ export default function LeadSourcesPage() {
         `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no`,
       );
 
-      // Poll to detect if popup was closed
+      // Poll to detect if popup was closed without completing OAuth
+      oauthSucceededRef.current = false;
       const pollTimer = setInterval(() => {
         if (popupRef.current?.closed) {
           clearInterval(pollTimer);
-          if (metaStep === "connecting") {
+          if (!oauthSucceededRef.current) {
             setMetaStep("idle");
           }
         }
