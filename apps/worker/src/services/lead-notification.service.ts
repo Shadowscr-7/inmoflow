@@ -97,62 +97,100 @@ export class LeadNotificationService {
   }
 
   private buildTelegramMessage(lead: LeadWithRelations, agentName: string | null): string {
-    const name = lead.name ?? "Desconocido";
+    const isCaptacion = this.isCaptacionLead(lead);
 
-    // Detect property interest from notes or source name
-    const propertyInterest = this.extractPropertyInterest(lead);
-    const sourceName = lead.source?.name ?? null;
-
-    // Build first line
-    let firstLine: string;
-    if (propertyInterest) {
-      firstLine = `<b>✅ Nuevo lead</b>\n${name} está interesad@ en <b>${propertyInterest}</b>`;
-    } else if (sourceName) {
-      firstLine = `<b>✅ Nuevo lead</b>\n${name} — Captación desde <b>${sourceName}</b>`;
+    if (isCaptacion) {
+      return this.buildCaptacionMessage(lead, agentName);
     } else {
-      firstLine = `<b>✅ Nuevo lead</b>\n${name}`;
+      return this.buildInteresadoMessage(lead, agentName);
     }
+  }
 
-    // Contact info
+  /** Lead interesado en comprar/alquilar una propiedad */
+  private buildInteresadoMessage(lead: LeadWithRelations, agentName: string | null): string {
+    const name = lead.name ?? "Desconocido";
+    const propertyTitle = this.extractPropertyTitle(lead);
+
+    const header = propertyTitle
+      ? `✅ Nuevo lead\n${name} está interesad@ en <b>${propertyTitle}</b>`
+      : `✅ Nuevo lead\n<b>${name}</b>`;
+
     const contactParts: string[] = [];
     if (lead.phone) contactParts.push(lead.phone);
     if (lead.email) contactParts.push(lead.email);
-    const contactLine = contactParts.length > 0
-      ? `📞 <b>Contacto:</b> ${contactParts.join(" | ")}`
-      : "";
+    const contactLine = contactParts.length > 0 ? `Contacto: ${contactParts.join(" | ")}` : "";
 
-    // Agent
-    const agentLine = agentName ? `👤 <b>Agente:</b> ${agentName}` : "";
+    const agentLine = agentName ? `Agente: ${agentName}` : "";
 
-    // Additional form fields from notes
-    const formFields = this.extractFormFields(lead.notes ?? "");
-    const formLines = formFields
-      .filter(([k]) => !["origen", "form", "leadgen id"].includes(k.toLowerCase()))
-      .map(([k, v]) => `• <b>${this.capitalize(k)}:</b> ${v}`)
-      .join("\n");
-
-    const parts = [firstLine];
-    if (formLines) parts.push(formLines);
+    const parts = [header];
     if (contactLine) parts.push(contactLine);
     if (agentLine) parts.push(agentLine);
 
     return parts.join("\n\n");
   }
 
-  private extractPropertyInterest(lead: LeadWithRelations): string | null {
-    // Check source name for property-related hints
-    const sourceName = lead.source?.name ?? "";
-    if (sourceName && sourceName.toLowerCase().includes("propiedad")) {
-      return null; // let source name be used instead
+  /** Lead de captación: alguien que ofrece/vende su propiedad */
+  private buildCaptacionMessage(lead: LeadWithRelations, agentName: string | null): string {
+    const agentLabel = agentName ? ` (${agentName})` : "";
+    const header = `✅ Captación de Propiedad 🏡${agentLabel}`;
+
+    const fields: string[] = [];
+    if (lead.name)  fields.push(`Nombre: ${lead.name}`);
+    if (lead.phone) fields.push(`Teléfono: ${lead.phone}`);
+    if (lead.email) fields.push(`Email: ${lead.email}`);
+
+    // Add form fields from notes (tipo propiedad, zona, etc.)
+    const formFields = this.extractFormFields(lead.notes ?? "");
+    const skipKeys = new Set(["origen", "form", "leadgen id", "nombre", "teléfono", "telefono", "email", "correo"]);
+    for (const [k, v] of formFields) {
+      if (!skipKeys.has(k.toLowerCase())) {
+        fields.push(`${this.capitalize(k)}: ${v}`);
+      }
     }
 
-    // Check notes for a property title field
+    return `${header}\n\n${fields.join("\n")}`;
+  }
+
+  /** Determina si el lead es una captación (alguien que vende/ofrece su propiedad) */
+  private isCaptacionLead(lead: LeadWithRelations): boolean {
+    const intent = (lead.intent ?? "").toLowerCase();
+    if (["venta", "captacion", "captación", "vender"].some((w) => intent.includes(w))) return true;
+
+    const sourceName = (lead.source?.name ?? "").toLowerCase();
+    if (["captac", "venta", "vender", "oferta"].some((w) => sourceName.includes(w))) return true;
+
+    // Check form fields for property-offering clues
+    const formFields = this.extractFormFields(lead.notes ?? "");
+    const hasZona = formFields.some(([k]) => k.toLowerCase().includes("zona"));
+    const hasTipoPropiedad = formFields.some(([k]) => k.toLowerCase().includes("tipo") || k.toLowerCase().includes("propiedad"));
+    if (hasZona || hasTipoPropiedad) return true;
+
+    return false;
+  }
+
+  /** Extrae el título de la propiedad de interés (para leads compradores) */
+  private extractPropertyTitle(lead: LeadWithRelations): string | null {
     const notes = lead.notes ?? "";
+
+    // Match "Propiedad: ..." or "Título: ..." form fields
     const propertyMatch = notes.match(/[Pp]ropiedad[:\s]+(.+?)(?:\n|$)/);
     if (propertyMatch) return propertyMatch[1].trim();
 
-    const titleMatch = notes.match(/[Tt]ítulo[:\s]+(.+?)(?:\n|$)/);
+    const titleMatch = notes.match(/[Tt][ií]tulo[:\s]+(.+?)(?:\n|$)/);
     if (titleMatch) return titleMatch[1].trim();
+
+    // Try from form fields
+    const formFields = this.extractFormFields(notes);
+    const propField = formFields.find(([k]) =>
+      ["propiedad", "inmueble", "titulo", "título"].includes(k.toLowerCase())
+    );
+    if (propField) return propField[1];
+
+    // Source name as fallback (if it looks like a property, not a generic "Meta Lead Ad")
+    const source = lead.source?.name ?? "";
+    if (source && !source.toLowerCase().includes("meta") && !source.toLowerCase().includes("captac")) {
+      return source;
+    }
 
     return null;
   }
