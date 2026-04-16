@@ -276,7 +276,7 @@ export interface Template {
 // ─── Rules ────────────────────────────────────────────
 
 export interface RuleAction {
-  type: "assign" | "send_template" | "change_status" | "change_stage" | "add_note" | "notify" | "send_ai_message" | "wait";
+  type: "assign" | "assign_by_form_name" | "send_template" | "change_status" | "change_stage" | "add_note" | "notify" | "send_ai_message" | "wait";
   userId?: string;
   templateKey?: string;
   value?: string;
