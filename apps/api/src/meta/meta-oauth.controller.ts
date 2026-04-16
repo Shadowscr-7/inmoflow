@@ -84,6 +84,8 @@ export class MetaOAuthController {
 
     // Allow window.opener access across origin navigation (Meta redirects lose COOP)
     res.setHeader("Cross-Origin-Opener-Policy", "unsafe-none");
+    // Allow inline scripts in this callback page (needed for postMessage + localStorage)
+    res.setHeader("Content-Security-Policy", "script-src 'unsafe-inline'");
 
     try {
       const result = await this.metaOAuth.handleCallback(code, state);
