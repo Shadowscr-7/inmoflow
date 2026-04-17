@@ -195,7 +195,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       auth: { user: emailUser, pass: emailPass },
     });
 
-    const attachments: nodemailer.Attachment[] = [];
+    const attachments: nodemailer.SendMailOptions["attachments"] = [];
     if (attachStack) {
       attachments.push({
         filename: `error-stack-${Date.now()}.txt`,

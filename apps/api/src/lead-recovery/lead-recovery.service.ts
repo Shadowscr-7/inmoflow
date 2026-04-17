@@ -136,7 +136,7 @@ export class LeadRecoveryService {
         leadId: approval?.leadId ?? null,
         createdTime: record.created_time,
         // Parsed fields
-        name: fields["full_name"] ?? [fields["first_name"], fields["last_name"]].filter(Boolean).join(" ") || null,
+        name: fields["full_name"] ?? ([fields["first_name"], fields["last_name"]].filter(Boolean).join(" ") || null),
         phone: fields["phone_number"] ?? fields["phone"] ?? null,
         email: fields["email"] ?? null,
         customFields: Object.fromEntries(
@@ -178,7 +178,7 @@ export class LeadRecoveryService {
     const rawData = existing.rawData as Record<string, unknown>;
     const fields = rawData.fields as Record<string, string> ?? {};
 
-    const name = fields["full_name"] ?? [fields["first_name"], fields["last_name"]].filter(Boolean).join(" ") || `Meta Lead ${leadgenId.slice(-6)}`;
+    const name = fields["full_name"] ?? ([fields["first_name"], fields["last_name"]].filter(Boolean).join(" ") || `Meta Lead ${leadgenId.slice(-6)}`);
     const email = fields["email"] ?? undefined;
     const phone = fields["phone_number"] ?? fields["phone"] ?? undefined;
 
