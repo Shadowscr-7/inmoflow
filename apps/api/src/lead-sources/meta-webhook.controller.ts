@@ -366,8 +366,9 @@ export class MetaWebhookController {
     // Pattern 1: "Something - AgentName"
     const dashMatch = formName.match(/[-–]\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/u);
     if (dashMatch) return dashMatch[1].trim();
-    // Pattern 2: "Captacion(es)? AgentName" (last capitalized word)
-    const captacMatch = formName.match(/[Cc]aptaci[oó]n\w*\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/u);
+    // Pattern 2: "Captacion [extra words] AgentName" — last capitalized word after captacion keyword
+    // e.g. "Captacion nueva Javier" → "Javier", "Captacion Gustavo" → "Gustavo"
+    const captacMatch = formName.match(/[Cc]aptaci[oó]n[\w\s]*\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/u);
     if (captacMatch) return captacMatch[1].trim();
     return null;
   }

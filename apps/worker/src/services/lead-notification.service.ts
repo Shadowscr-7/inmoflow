@@ -222,6 +222,10 @@ export class LeadNotificationService {
     const formLineAgentMatch = notes.match(/^Formulario:\s+.+[-–]\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)/mu);
     if (formLineAgentMatch) return formLineAgentMatch[1].trim();
 
+    // "Formulario: Captacion nueva Javier" → "Javier"
+    const formLineCaptacMatch = notes.match(/^Formulario:\s+[Cc]aptaci[oó]n[\w\s]*\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/mu);
+    if (formLineCaptacMatch) return formLineCaptacMatch[1].trim();
+
     // Extract from source/form name
     const sourceName = lead.source?.name ?? "";
     if (!sourceName) return null;
