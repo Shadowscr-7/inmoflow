@@ -169,13 +169,21 @@ export class MetaWebhookController {
     const teInteresaAnswer = teInteresaKey ? (leadData?.customFields ?? {})[teInteresaKey] : null;
     const isInterested = !teInteresaAnswer || !/^(no|0)$/i.test(teInteresaAnswer.trim());
 
-    // Extract property title from question label: "...contacto por [PROPERTY] de U$S [PRICE]?"
+    // Extract property title + price from question label/key:
+    // "...contacto por el Apartamento en Cordon de U$S 138.000?" → "el Apartamento en Cordon de U$S 138.000"
     let propertyTitle: string | null = null;
     if (teInteresaKey) {
+      // Try from the question label (proper casing)
       const question = formQuestions.find((q) => q.key === teInteresaKey);
       if (question?.label) {
-        const match = question.label.match(/(?:por\s+)(.+?)(?:\s+de\s+[Uu]\$?[Ss]?|\?|$)/i);
+        const match = question.label.match(/(?:por\s+)(.+?)(?:\?|$)/i);
         if (match) propertyTitle = match[1].trim();
+      }
+      // Fallback: derive from the key itself (replace _ with spaces, strip trailing ?)
+      if (!propertyTitle) {
+        const keyText = teInteresaKey.replace(/_/g, " ").replace(/\?$/, "").replace(/u\$s/gi, "U$S");
+        const keyMatch = keyText.match(/(?:por\s+)(.+)$/i);
+        if (keyMatch) propertyTitle = keyMatch[1].trim();
       }
     }
 
