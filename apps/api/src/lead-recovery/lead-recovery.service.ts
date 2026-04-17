@@ -54,7 +54,7 @@ export class LeadRecoveryService {
     });
 
     const metaSources = sources.filter(
-      (s) => s.metaFormId && (s.metaPageAccessToken || process.env.META_PAGE_ACCESS_TOKEN),
+      (s) => s.metaPageId && (s.metaPageAccessToken || process.env.META_PAGE_ACCESS_TOKEN),
     );
 
     if (metaSources.length === 0) {
@@ -67,22 +67,38 @@ export class LeadRecoveryService {
     const allLeadgenIds: string[] = [];
     const rawByLeadgenId: Record<string, { record: MetaLeadRecord; sourceId: string; formName: string | null; pageId: string; formId: string }> = {};
 
-    // Fetch from each form
+    // Fetch from each source — if it has a specific formId use it directly,
+    // if it's a catch-all (formId = null) fetch all forms for the page first
     for (const source of metaSources) {
       const token = source.metaPageAccessToken ?? process.env.META_PAGE_ACCESS_TOKEN ?? "";
-      const formId = source.metaFormId!;
       const pageId = source.metaPageId ?? "";
 
-      const records = await this.fetchFormLeads(formId, token, fromTs, toTs);
-      for (const rec of records) {
-        allLeadgenIds.push(rec.id);
-        rawByLeadgenId[rec.id] = {
-          record: rec,
-          sourceId: source.id,
-          formName: source.metaFormName ?? null,
-          pageId,
-          formId,
-        };
+      // Resolve which form IDs to query
+      let formEntries: { formId: string; formName: string | null }[] = [];
+
+      if (source.metaFormId) {
+        formEntries = [{ formId: source.metaFormId, formName: source.metaFormName ?? null }];
+      } else {
+        // Catch-all source: discover all forms for this page
+        const forms = await this.fetchPageForms(pageId, token);
+        formEntries = forms.map((f) => ({ formId: f.id, formName: f.name ?? null }));
+        this.logger.log(`Catch-all source for page ${pageId}: found ${forms.length} forms`);
+      }
+
+      for (const { formId, formName } of formEntries) {
+        const records = await this.fetchFormLeads(formId, token, fromTs, toTs);
+        for (const rec of records) {
+          if (!allLeadgenIds.includes(rec.id)) {
+            allLeadgenIds.push(rec.id);
+          }
+          rawByLeadgenId[rec.id] = {
+            record: rec,
+            sourceId: source.id,
+            formName: formName ?? source.metaFormName ?? null,
+            pageId,
+            formId,
+          };
+        }
       }
     }
 
@@ -293,6 +309,29 @@ export class LeadRecoveryService {
   }
 
   // ─── Meta Graph API ──────────────────────────────────
+
+  private async fetchPageForms(
+    pageId: string,
+    accessToken: string,
+  ): Promise<Array<{ id: string; name?: string }>> {
+    try {
+      const params = new URLSearchParams({
+        access_token: accessToken,
+        fields: "id,name,status",
+        limit: "100",
+      });
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/${pageId}/leadgen_forms?${params}`,
+        { signal: AbortSignal.timeout(10000) },
+      );
+      if (!res.ok) return [];
+      const data = await res.json() as { data?: Array<{ id: string; name?: string; status?: string }> };
+      // Return all forms (ACTIVE and ARCHIVED — we want leads from old campaigns too)
+      return data.data ?? [];
+    } catch {
+      return [];
+    }
+  }
 
   private async fetchFormLeads(
     formId: string,
