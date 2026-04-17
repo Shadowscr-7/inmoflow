@@ -124,9 +124,22 @@ export class LeadNotificationService {
 
     const agentLine = agent ? `Agente: ${agent}` : "";
 
+    // Custom form field responses (answers from the Meta form)
+    const formFields = this.extractFormFields(lead.notes ?? "");
+    const skipKeys = new Set([
+      "origen", "form", "formulario", "leadgen id",
+      "nombre", "full_name", "first_name", "last_name",
+      "teléfono", "telefono", "phone", "phone_number",
+      "email", "correo",
+    ]);
+    const customLines = formFields
+      .filter(([k]) => !skipKeys.has(k.toLowerCase()))
+      .map(([k, v]) => `${this.capitalize(k)}: ${v}`);
+
     const parts = [header];
     if (contactLine) parts.push(contactLine);
     if (agentLine) parts.push(agentLine);
+    if (customLines.length > 0) parts.push(customLines.join("\n"));
 
     return parts.join("\n\n");
   }
@@ -183,6 +196,15 @@ export class LeadNotificationService {
     const titleMatch = notes.match(/^[•\-]?\s*[Tt][ií]tulo:\s+(.+)$/m);
     if (titleMatch) return titleMatch[1].trim();
 
+    // "Formulario: Apartamento en Barrio Sur - Sara" → "Apartamento en Barrio Sur"
+    // (stored by lead-recovery approval; strip agent suffix)
+    const formLineMatch = notes.match(/^Formulario:\s+(.+)$/m);
+    if (formLineMatch) {
+      const raw = formLineMatch[1].trim();
+      const withoutAgent = raw.replace(/\s*[-–]\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s*$/u, "").trim();
+      return withoutAgent || null;
+    }
+
     // Try from form fields
     const formFields = this.extractFormFields(notes);
     const propField = formFields.find(([k]) =>
@@ -208,6 +230,10 @@ export class LeadNotificationService {
     // "Agente formulario: Javier" line stored by meta-webhook
     const agentMatch = notes.match(/^Agente formulario:\s+(.+)$/m);
     if (agentMatch) return agentMatch[1].trim();
+
+    // "Formulario: Apartamento en Barrio Sur - Sara" → "Sara"
+    const formLineAgentMatch = notes.match(/^Formulario:\s+.+[-–]\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/mu);
+    if (formLineAgentMatch) return formLineAgentMatch[1].trim();
 
     // Extract from source/form name
     const sourceName = lead.source?.name ?? "";
