@@ -762,6 +762,30 @@ export interface CommissionSummary {
   byOperation: Record<string, { deals: number; commission: number }>;
 }
 
+export interface LeadRecoveryItem {
+  leadgenId: string;
+  sourceId: string;
+  formId: string;
+  pageId: string;
+  formName: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  approvalId: string | null;
+  leadId: string | null;
+  createdTime: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  customFields: Record<string, string>;
+  adName: string | null;
+  campaignName: string | null;
+}
+
+export interface LeadRecoveryResult {
+  items: LeadRecoveryItem[];
+  total: number;
+  sources: number;
+}
+
 export const api = {
   // Dashboard
   getDashboardStats(token: string) {
@@ -1445,5 +1469,17 @@ export const api = {
   getCommissionSummary(token: string, params?: Record<string, string>) {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
     return apiFetch<CommissionSummary>(`/commissions/summary${qs}`, { token });
+  },
+
+  // ─── Lead Recovery ────────────────────────────────────
+  fetchLeadRecovery(token: string, from: string, to: string) {
+    const qs = new URLSearchParams({ from, to }).toString();
+    return apiFetch<LeadRecoveryResult>(`/lead-recovery?${qs}`, { token });
+  },
+  approveLeadRecovery(token: string, leadgenId: string) {
+    return apiFetch<{ ok: boolean; leadId?: string }>(`/lead-recovery/${leadgenId}/approve`, { token, method: "POST" });
+  },
+  rejectLeadRecovery(token: string, leadgenId: string) {
+    return apiFetch<{ ok: boolean }>(`/lead-recovery/${leadgenId}/reject`, { token, method: "POST" });
   },
 };

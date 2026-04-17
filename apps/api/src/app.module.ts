@@ -33,6 +33,7 @@ import { CommissionsModule } from "./commissions/commissions.module";
 import { QueuedActionsModule } from "./queued-actions/queued-actions.module";
 import { CalendarModule } from "./calendar/calendar.module";
 import { MeliModule } from "./meli/meli.module";
+import { LeadRecoveryModule } from "./lead-recovery/lead-recovery.module";
 import { EncryptionModule } from "./common/encryption.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { ReelVideoModule } from "./reel-video/reel-video.module";
@@ -72,6 +73,7 @@ import { ReelVideoModule } from "./reel-video/reel-video.module";
     QueuedActionsModule,
     CalendarModule,
     MeliModule,
+    LeadRecoveryModule,
     UploadsModule,
     ReelVideoModule,
     HealthModule,

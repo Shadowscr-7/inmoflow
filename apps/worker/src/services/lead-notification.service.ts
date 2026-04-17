@@ -167,7 +167,7 @@ export class LeadNotificationService {
     const formFields = this.extractFormFields(lead.notes ?? "");
     const hasZona = formFields.some(([k]) => k.toLowerCase().includes("zona"));
     const hasTipoPropiedad = formFields.some(([k]) => k.toLowerCase().includes("tipo") || k.toLowerCase().includes("propiedad"));
-    if (hasZona || hasTipoPropiedad) return true;
+    if (hasZona && hasTipoPropiedad) return true;
 
     return false;
   }

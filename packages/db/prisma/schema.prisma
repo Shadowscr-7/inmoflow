@@ -152,6 +152,7 @@ model Tenant {
   commissions        Commission[]
   queuedActions      QueuedAction[]
   agentAvailabilities AgentAvailability[]
+  leadApprovals      LeadApproval[]
 }
 
 model Domain {
@@ -256,8 +257,9 @@ model LeadSource {
   enabled              Boolean        @default(true)
   createdAt            DateTime       @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  leads  Lead[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads         Lead[]
+  leadApprovals LeadApproval[]
 
   @@index([tenantId, type])
   @@unique([tenantId, type, metaPageId, metaFormId])
@@ -812,6 +814,40 @@ model CommissionRule {
 
   @@unique([tenantId, operationType])
   @@index([tenantId, enabled])
+}
+
+// ─── LEAD RECOVERY / APPROVALS ───────────────────────
+
+enum LeadApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Leads fetched from Meta (or other sources) pending review.
+/// Approved entries become real Leads; rejected ones stay as historical records.
+model LeadApproval {
+  id          String              @id @default(uuid())
+  tenantId    String
+  sourceId    String?             // FK to LeadSource that owns this page/form
+  leadgenId   String              // Meta leadgen_id (unique per tenant)
+  pageId      String
+  formId      String
+  formName    String?
+  status      LeadApprovalStatus  @default(PENDING)
+  leadId      String?             // Set when approved → created Lead
+  rawData     Json                // Full lead data from Meta Graph API
+  reviewedAt  DateTime?
+  reviewedBy  String?             // userId who took action
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source LeadSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, leadgenId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
 }
 
 /// Individual commission record tied to a closed deal
