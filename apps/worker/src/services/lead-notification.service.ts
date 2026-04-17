@@ -124,22 +124,9 @@ export class LeadNotificationService {
 
     const agentLine = agent ? `Agente: ${agent}` : "";
 
-    // Custom form field responses (answers from the Meta form)
-    const formFields = this.extractFormFields(lead.notes ?? "");
-    const skipKeys = new Set([
-      "origen", "form", "formulario", "leadgen id",
-      "nombre", "full_name", "first_name", "last_name",
-      "teléfono", "telefono", "phone", "phone_number",
-      "email", "correo",
-    ]);
-    const customLines = formFields
-      .filter(([k]) => !skipKeys.has(k.toLowerCase()))
-      .map(([k, v]) => `${this.capitalize(k)}: ${v}`);
-
     const parts = [header];
     if (contactLine) parts.push(contactLine);
     if (agentLine) parts.push(agentLine);
-    if (customLines.length > 0) parts.push(customLines.join("\n"));
 
     return parts.join("\n\n");
   }
@@ -196,12 +183,12 @@ export class LeadNotificationService {
     const titleMatch = notes.match(/^[•\-]?\s*[Tt][ií]tulo:\s+(.+)$/m);
     if (titleMatch) return titleMatch[1].trim();
 
-    // "Formulario: Apartamento en Barrio Sur - Sara" → "Apartamento en Barrio Sur"
-    // (stored by lead-recovery approval; strip agent suffix)
+    // "Formulario: Apartamento Arroyo Seco - Fabricio-rebaja" → "Apartamento Arroyo Seco"
+    // (stored by lead-recovery approval; strip everything from first " - Agent" onwards)
     const formLineMatch = notes.match(/^Formulario:\s+(.+)$/m);
     if (formLineMatch) {
       const raw = formLineMatch[1].trim();
-      const withoutAgent = raw.replace(/\s*[-–]\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s*$/u, "").trim();
+      const withoutAgent = raw.replace(/\s*[-–]\s*[A-ZÁÉÍÓÚÑ].+$/su, "").trim();
       return withoutAgent || null;
     }
 
@@ -212,11 +199,11 @@ export class LeadNotificationService {
     );
     if (propField) return propField[1];
 
-    // Source name as fallback: strip agent suffix and use property part
-    // "Casa en venta - Javier" → "Casa en venta"
+    // Source name as fallback: strip everything from " - Agent" onwards
+    // "Casa en venta - Javier-extra" → "Casa en venta"
     const source = lead.source?.name ?? "";
     if (source && !source.toLowerCase().includes("meta") && !source.toLowerCase().includes("captac") && !source.toLowerCase().includes("todos")) {
-      const withoutAgent = source.replace(/\s*[-–]\s*[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s*$/u, "").trim();
+      const withoutAgent = source.replace(/\s*[-–]\s*[A-ZÁÉÍÓÚÑ].+$/su, "").trim();
       return withoutAgent || null;
     }
 
@@ -231,8 +218,8 @@ export class LeadNotificationService {
     const agentMatch = notes.match(/^Agente formulario:\s+(.+)$/m);
     if (agentMatch) return agentMatch[1].trim();
 
-    // "Formulario: Apartamento en Barrio Sur - Sara" → "Sara"
-    const formLineAgentMatch = notes.match(/^Formulario:\s+.+[-–]\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)\s*$/mu);
+    // "Formulario: Apartamento Arroyo Seco - Fabricio-rebaja" → "Fabricio"
+    const formLineAgentMatch = notes.match(/^Formulario:\s+.+[-–]\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)/mu);
     if (formLineAgentMatch) return formLineAgentMatch[1].trim();
 
     // Extract from source/form name
