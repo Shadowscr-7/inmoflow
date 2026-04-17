@@ -145,10 +145,10 @@ export class LeadNotificationService {
 
     // Add form fields from notes (tipo propiedad, zona, etc.)
     const formFields = this.extractFormFields(lead.notes ?? "");
-    const skipKeys = new Set(["origen", "form", "leadgen id", "nombre", "teléfono", "telefono", "email", "correo"]);
+    const skipKeys = new Set(["origen", "form", "formulario", "leadgen id", "nombre", "teléfono", "telefono", "email", "correo"]);
     for (const [k, v] of formFields) {
       if (!skipKeys.has(k.toLowerCase())) {
-        fields.push(`${this.capitalize(k)}: ${v}`);
+        fields.push(`${this.normalizeFieldKey(k)}: ${v}`);
       }
     }
 
@@ -386,6 +386,19 @@ export class LeadNotificationService {
       if (m) rows.push([m[1].trim(), m[2].trim()]);
     }
     return rows;
+  }
+
+  /** Maps raw Meta form question keys to clean display labels */
+  private normalizeFieldKey(key: string): string {
+    const k = key.toLowerCase();
+    if (k.includes("zona") || k.includes("ubicad") || k.includes("barrio") || k.includes("localidad")) return "Zona";
+    if (k.includes("tipo") || (k.includes("propiedad") && !k.includes("precio"))) return "Propiedad";
+    if (k.includes("precio") || k.includes("valor") || k.includes("monto")) return "Precio";
+    if (k.includes("dormitorio") || k.includes("habitacion") || k.includes("cuarto")) return "Dormitorios";
+    if (k.includes("baño") || k.includes("bano")) return "Baños";
+    if (k.includes("superficie") || k.includes("metros") || k.includes("m2")) return "Superficie";
+    // Generic cleanup: remove ¿?, replace _ with space, capitalize
+    return this.capitalize(key.replace(/[¿?]/g, "").replace(/_/g, " ").trim());
   }
 
   private capitalize(s: string): string {
