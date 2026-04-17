@@ -5,6 +5,8 @@ type FetchOptions = RequestInit & {
   token?: string;
   /** Skip the global 401 handler (used for login / refresh endpoints) */
   skipUnauthorizedHandler?: boolean;
+  /** Custom timeout in ms (default: REQUEST_TIMEOUT_MS) */
+  timeoutMs?: number;
 };
 
 // Global 401 handler — set by AuthProvider
@@ -19,12 +21,13 @@ async function apiFetch<T = unknown>(
 ): Promise<T> {
   const { token, headers, skipUnauthorizedHandler, ...rest } = options;
 
+  const { timeoutMs, ...rest2 } = rest as FetchOptions;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(`${API_URL}/api${path}`, {
-      ...rest,
+      ...rest2,
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
@@ -1474,7 +1477,7 @@ export const api = {
   // ─── Lead Recovery ────────────────────────────────────
   fetchLeadRecovery(token: string, from: string, to: string) {
     const qs = new URLSearchParams({ from, to }).toString();
-    return apiFetch<LeadRecoveryResult>(`/lead-recovery?${qs}`, { token });
+    return apiFetch<LeadRecoveryResult>(`/lead-recovery?${qs}`, { token, timeoutMs: 120_000 });
   },
   approveLeadRecovery(token: string, leadgenId: string) {
     return apiFetch<{ ok: boolean; leadId?: string }>(`/lead-recovery/${leadgenId}/approve`, { token, method: "POST" });
