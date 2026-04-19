@@ -233,6 +233,117 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
     });
   };
 
+  const detailModal = selectedItem ? (() => {
+    const item = selectedItem;
+    const actions = (item.rule?.actions ?? []) as RuleAction[];
+    const tplAction = actions.find((a) => a.type === "send_template");
+    const tpl = tplAction?.templateKey ? templates.find((t) => t.key === tplAction.templateKey) : null;
+    const conditions = item.rule?.conditions ?? {};
+    const condRows = renderConditions(conditions);
+
+    return (
+      <Modal
+        open
+        onClose={() => setSelectedItem(null)}
+        title="Detalle de la acción encolada"
+        size="lg"
+        footer={<button onClick={() => setSelectedItem(null)} className="btn-secondary">Cerrar</button>}
+      >
+        <div className="space-y-5 text-sm">
+
+          {/* Lead + agente */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Lead</p>
+              <p className="font-medium text-gray-900 dark:text-white">
+                {item.lead?.name ?? item.lead?.phone ?? item.leadId.slice(0, 8) + "…"}
+              </p>
+            </div>
+            {item.assignee && (
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Agente</p>
+                <p className="font-medium text-gray-900 dark:text-white">
+                  {item.assignee.name ?? item.assignee.email}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Automatización */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Automatización</p>
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
+              <p><span className="text-gray-500">Nombre:</span> <span className="font-medium text-gray-900 dark:text-white">{item.rule?.name ?? "—"}</span></p>
+              <p><span className="text-gray-500">Trigger:</span> <span className="font-medium">{TRIGGER_LABELS[item.trigger] ?? item.trigger}</span></p>
+            </div>
+          </div>
+
+          {/* Condiciones */}
+          {condRows.length > 0 ? (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones que se cumplieron</p>
+              <div className="space-y-1.5">
+                {condRows.map((row, i) => (
+                  <div key={i} className="flex flex-wrap items-center gap-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{row.field}</span>
+                    <span className="text-gray-400 text-xs">{row.operator}</span>
+                    <span className="font-semibold text-brand-600 dark:text-brand-400">&quot;{row.value}&quot;</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones</p>
+              <p className="text-gray-400 text-xs italic">Sin condiciones adicionales (aplica a todos los leads)</p>
+            </div>
+          )}
+
+          {/* Acciones */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Acciones configuradas</p>
+            <div className="space-y-1.5">
+              {actions.map((a, i) => (
+                <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300 text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{ACTION_TYPE_LABELS[a.type] ?? a.type}</span>
+                  {a.templateKey && (
+                    <span className="text-gray-400 text-xs">— {templates.find((t) => t.key === a.templateKey)?.name ?? a.templateKey}</span>
+                  )}
+                  {a.channel && <Badge variant="blue">{a.channel}</Badge>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Contenido de la plantilla */}
+          {tpl && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                Mensaje que se enviará — <span className="text-brand-600 dark:text-brand-400 normal-case font-medium">{tpl.name}</span>
+              </p>
+              <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{interpolateTemplate(tpl.content, item)}</p>
+              </div>
+              {tpl.attachments && tpl.attachments.length > 0 && (
+                <p className="text-xs text-gray-400 mt-1">📎 {tpl.attachments.length} adjunto(s): {tpl.attachments.map((a) => a.originalName).join(", ")}</p>
+              )}
+            </div>
+          )}
+
+          {/* Error si hay */}
+          {item.error && (
+            <div>
+              <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">Error</p>
+              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">{item.error}</p>
+            </div>
+          )}
+
+        </div>
+      </Modal>
+    );
+  })() : null;
+
   return (
     <div>
       <PageHeader
@@ -402,118 +513,7 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
         </div>
       )}
 
-      {/* ─── Detail Modal ──────────────────────────────── */}
-      {selectedItem && (() => {
-        const item = selectedItem;
-        const actions = (item.rule?.actions ?? []) as RuleAction[];
-        const tplAction = actions.find((a) => a.type === "send_template");
-        const tpl = tplAction?.templateKey ? templates.find((t) => t.key === tplAction.templateKey) : null;
-        const conditions = item.rule?.conditions ?? {};
-        const condRows = renderConditions(conditions);
-
-        return (
-          <Modal
-            open
-            onClose={() => setSelectedItem(null)}
-            title="Detalle de la acción encolada"
-            size="lg"
-            footer={<button onClick={() => setSelectedItem(null)} className="btn-secondary">Cerrar</button>}
-          >
-            <div className="space-y-5 text-sm">
-
-              {/* Lead + agente */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Lead</p>
-                  <p className="font-medium text-gray-900 dark:text-white">
-                    {item.lead?.name ?? item.lead?.phone ?? item.leadId.slice(0, 8) + "…"}
-                  </p>
-                </div>
-                {item.assignee && (
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Agente</p>
-                    <p className="font-medium text-gray-900 dark:text-white">
-                      {item.assignee.name ?? item.assignee.email}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Automatización */}
-              <div>
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Automatización</p>
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
-                  <p><span className="text-gray-500">Nombre:</span> <span className="font-medium text-gray-900 dark:text-white">{item.rule?.name ?? "—"}</span></p>
-                  <p><span className="text-gray-500">Trigger:</span> <span className="font-medium">{TRIGGER_LABELS[item.trigger] ?? item.trigger}</span></p>
-                </div>
-              </div>
-
-              {/* Condiciones */}
-              {condRows.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones que se cumplieron</p>
-                  <div className="space-y-1.5">
-                    {condRows.map((row, i) => (
-                      <div key={i} className="flex flex-wrap items-center gap-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
-                        <span className="font-medium text-gray-700 dark:text-gray-300">{row.field}</span>
-                        <span className="text-gray-400 text-xs">{row.operator}</span>
-                        <span className="font-semibold text-brand-600 dark:text-brand-400">&quot;{row.value}&quot;</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {condRows.length === 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones</p>
-                  <p className="text-gray-400 text-xs italic">Sin condiciones adicionales (aplica a todos los leads)</p>
-                </div>
-              )}
-
-              {/* Acciones */}
-              <div>
-                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Acciones configuradas</p>
-                <div className="space-y-1.5">
-                  {actions.map((a, i) => (
-                    <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300 text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{ACTION_TYPE_LABELS[a.type] ?? a.type}</span>
-                      {a.templateKey && (
-                        <span className="text-gray-400 text-xs">— {templates.find((t) => t.key === a.templateKey)?.name ?? a.templateKey}</span>
-                      )}
-                      {a.channel && <Badge variant="blue">{a.channel}</Badge>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Contenido de la plantilla */}
-              {tpl && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-                    Mensaje que se enviará — <span className="text-brand-600 dark:text-brand-400 normal-case font-medium">{tpl.name}</span>
-                  </p>
-                  <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                    <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{interpolateTemplate(tpl.content, item)}</p>
-                  </div>
-                  {tpl.attachments && tpl.attachments.length > 0 && (
-                    <p className="text-xs text-gray-400 mt-1">📎 {tpl.attachments.length} adjunto(s): {tpl.attachments.map((a) => a.originalName).join(", ")}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Error si hay */}
-              {item.error && (
-                <div>
-                  <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">Error</p>
-                  <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">{item.error}</p>
-                </div>
-              )}
-
-            </div>
-          </Modal>
-        );
-      })()}
+      {detailModal}
     </div>
   );
 }
