@@ -39,6 +39,7 @@ export class RuleEngineService {
     private readonly aiAgent: AiAgentService,
     private readonly messageSender: MessageSenderService,
     @InjectQueue("workflow") private readonly workflowQueue: Queue,
+    @InjectQueue("lead") private readonly leadQueue: Queue,
   ) {}
 
   /**
@@ -64,13 +65,23 @@ export class RuleEngineService {
     // Fetch rules scoped to this lead's assignee:
     //  - Global rules (userId IS NULL) always fire.
     //  - User-specific rules fire ONLY when the lead is assigned to that user.
+    //  - Exception: for lead.created on an unassigned lead, all rules run so
+    //    assignment automations (e.g. "assign based on form name") can fire.
+    let ruleUserFilter: Prisma.RuleWhereInput = {};
+    if (lead.assigneeId) {
+      // Lead already assigned: global rules + rules scoped to the assignee
+      ruleUserFilter = { OR: [{ userId: null }, { userId: lead.assigneeId }] };
+    } else if (trigger !== "lead.created") {
+      // No assignee and not a creation event: global rules only
+      ruleUserFilter = { userId: null };
+    }
+    // lead.created with no assignee → no userId filter, all rules run
+
     const ruleWhere: Prisma.RuleWhereInput = {
       tenantId,
       trigger,
       enabled: true,
-      OR: lead.assigneeId
-        ? [{ userId: null }, { userId: lead.assigneeId }]
-        : [{ userId: null }],
+      ...ruleUserFilter,
     };
 
     const rules = await this.prisma.rule.findMany({
@@ -459,12 +470,19 @@ export class RuleEngineService {
       return;
     }
 
+    const prevLead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { assigneeId: true } });
     await this.prisma.lead.update({
       where: { id: leadId },
       data: { assigneeId: matched.id },
     });
 
     this.logger.log(`assign_by_form_name: assigned lead ${leadId} to ${matched.name} (matched "${formName}")`);
+
+    await this.leadQueue.add(
+      "lead.assigned",
+      { tenantId, leadId, assigneeId: matched.id, previousAssigneeId: prevLead?.assigneeId ?? null },
+      { attempts: 3, backoff: { type: "exponential", delay: 2000 }, removeOnComplete: 100, removeOnFail: 500 },
+    );
   }
 
   private async actionAssign(tenantId: string, leadId: string, action: RuleAction) {
@@ -486,12 +504,19 @@ export class RuleEngineService {
 
     if (!userId) return;
 
+    const prevLead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { assigneeId: true } });
     await this.prisma.lead.update({
       where: { id: leadId },
       data: { assigneeId: userId },
     });
 
     this.logger.debug(`Assigned lead ${leadId} to user ${userId}`);
+
+    await this.leadQueue.add(
+      "lead.assigned",
+      { tenantId, leadId, assigneeId: userId, previousAssigneeId: prevLead?.assigneeId ?? null },
+      { attempts: 3, backoff: { type: "exponential", delay: 2000 }, removeOnComplete: 100, removeOnFail: 500 },
+    );
   }
 
   private async actionSendTemplate(tenantId: string, leadId: string, action: RuleAction) {

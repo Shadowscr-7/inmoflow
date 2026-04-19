@@ -85,19 +85,35 @@ export class LeadRecoveryService {
         this.logger.log(`Catch-all source for page ${pageId}: found ${forms.length} forms`);
       }
 
-      for (const { formId, formName } of formEntries) {
-        const records = await this.fetchFormLeads(formId, token, fromTs, toTs);
-        for (const rec of records) {
-          if (!allLeadgenIds.includes(rec.id)) {
-            allLeadgenIds.push(rec.id);
+      // Fetch all forms in parallel (max 10 concurrent to avoid rate limits)
+      const chunks: Array<typeof formEntries> = [];
+      for (let i = 0; i < formEntries.length; i += 10) {
+        chunks.push(formEntries.slice(i, i + 10));
+      }
+
+      for (const chunk of chunks) {
+        const results = await Promise.all(
+          chunk.map(({ formId, formName }) =>
+            this.fetchFormLeads(formId, token, fromTs, toTs).then((records) => ({
+              formId,
+              formName,
+              records,
+            })),
+          ),
+        );
+        for (const { formId, formName, records } of results) {
+          for (const rec of records) {
+            if (!allLeadgenIds.includes(rec.id)) {
+              allLeadgenIds.push(rec.id);
+            }
+            rawByLeadgenId[rec.id] = {
+              record: rec,
+              sourceId: source.id,
+              formName: formName ?? source.metaFormName ?? null,
+              pageId,
+              formId,
+            };
           }
-          rawByLeadgenId[rec.id] = {
-            record: rec,
-            sourceId: source.id,
-            formName: formName ?? source.metaFormName ?? null,
-            pageId,
-            formId,
-          };
         }
       }
     }

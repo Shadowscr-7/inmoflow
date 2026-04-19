@@ -889,6 +889,9 @@ export const api = {
   resetWhatsApp(token: string) {
     return apiFetch<{ ok: boolean }>("/channels/whatsapp/reset", { token, method: "POST" });
   },
+  reregisterWhatsAppWebhook(token: string) {
+    return apiFetch<{ success: boolean; webhookUrl: string; message: string }>("/channels/whatsapp/reregister-webhook", { token, method: "POST" });
+  },
   connectTelegram(token: string) {
     return apiFetch<{ channelId: string; status: string; startLink: string }>("/channels/telegram/connect", { token, method: "POST" });
   },

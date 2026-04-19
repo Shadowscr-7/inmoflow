@@ -13,6 +13,7 @@ import {
   Users,
   User as UserIcon,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { ConnectionBadge, PageHeader, useToast } from "@/components/ui";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -30,6 +31,7 @@ export default function ChannelsPage() {
   const [waQr, setWaQr] = useState<string | null>(null);
   const [waPairing, setWaPairing] = useState<string | null>(null);
   const [waLoading, setWaLoading] = useState(false);
+  const [waWebhookLoading, setWaWebhookLoading] = useState(false);
   const [tgLink, setTgLink] = useState<string | null>(null);
   const [tgLoading, setTgLoading] = useState(false);
   const [polling, setPolling] = useState(false);
@@ -100,6 +102,23 @@ export default function ChannelsPage() {
       toast.info("WhatsApp desconectado");
     } catch (err) {
       toast.error(`Error: ${(err as Error).message}`);
+    }
+  };
+
+  const handleReregisterWebhook = async () => {
+    if (!token) return;
+    setWaWebhookLoading(true);
+    try {
+      const res = await api.reregisterWhatsAppWebhook(token);
+      if (res.success) {
+        toast.success("Webhook actualizado correctamente");
+      } else {
+        toast.error(res.message);
+      }
+    } catch (err) {
+      toast.error(`Error: ${(err as Error).message}`);
+    } finally {
+      setWaWebhookLoading(false);
     }
   };
 
@@ -201,6 +220,14 @@ export default function ChannelsPage() {
               <p className="text-xs text-gray-400">
                 Instancia: {myWa.providerInstanceId}
               </p>
+              <button
+                onClick={handleReregisterWebhook}
+                disabled={waWebhookLoading}
+                className="btn-secondary w-full"
+              >
+                <RefreshCw className={`w-4 h-4 ${waWebhookLoading ? "animate-spin" : ""}`} />
+                {waWebhookLoading ? "Actualizando..." : "Reconectar webhook"}
+              </button>
               <button onClick={handleDisconnectWA} className="btn-danger w-full">
                 <WifiOff className="w-4 h-4" /> Desconectar
               </button>
