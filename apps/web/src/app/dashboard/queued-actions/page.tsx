@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { api, QueuedAction, RuleAction, Template } from "@/lib/api";
@@ -53,9 +53,9 @@ const CONDITION_FIELD_LABELS: Record<string, string> = {
   sourceName: "Nombre de fuente",
   formName: "Nombre del formulario",
   formField: "Respuesta del formulario",
-  intent: "Intención",
+  intent: "Intencion",
   messageContent: "Contenido del mensaje",
-  noResponseDays: "Días sin respuesta",
+  noResponseDays: "Dias sin respuesta",
 };
 
 const OPERATOR_LABELS: Record<string, string> = {
@@ -66,27 +66,6 @@ const OPERATOR_LABELS: Record<string, string> = {
   greater_than: "mayor que",
   less_than: "menor que",
 };
-
-function renderConditions(conditions: Record<string, unknown>) {
-  const rows: { field: string; operator: string; value: string }[] = [];
-  for (const [key, val] of Object.entries(conditions)) {
-    let field = key;
-    if (key.startsWith("form_")) {
-      field = `Respuesta del formulario (${key.slice(5).replace(/_/g, " ")})`;
-    } else {
-      field = CONDITION_FIELD_LABELS[key] ?? key;
-    }
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      const entries = Object.entries(val as Record<string, unknown>);
-      if (entries.length > 0) {
-        rows.push({ field, operator: OPERATOR_LABELS[entries[0][0]] ?? entries[0][0], value: String(entries[0][1]) });
-      }
-    } else {
-      rows.push({ field, operator: "es igual a", value: String(val) });
-    }
-  }
-  return rows;
-}
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
   assign: "Asignar agente",
@@ -100,20 +79,34 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
   wait: "Esperar",
 };
 
+function parseConditions(conditions: Record<string, unknown>) {
+  const rows: { field: string; operator: string; value: string }[] = [];
+  for (const [key, val] of Object.entries(conditions)) {
+    const field = key.startsWith("form_")
+      ? "Respuesta del formulario (" + key.slice(5).replace(/_/g, " ") + ")"
+      : (CONDITION_FIELD_LABELS[key] ?? key);
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const entries = Object.entries(val as Record<string, unknown>);
+      if (entries.length > 0) {
+        rows.push({ field, operator: OPERATOR_LABELS[entries[0][0]] ?? entries[0][0], value: String(entries[0][1]) });
+      }
+    } else {
+      rows.push({ field, operator: "es igual a", value: String(val) });
+    }
+  }
+  return rows;
+}
+
 function interpolateTemplate(content: string, item: QueuedAction): string {
   const ctx = (item.context ?? {}) as Record<string, unknown>;
-
-  // Build form_ variables from context
   const formLines: string[] = [];
   const formVars: Record<string, string> = {};
   for (const [k, v] of Object.entries(ctx)) {
     if (k.startsWith("form_") && v !== undefined && v !== null && v !== "") {
-      const label = k.slice(5).replace(/_/g, " ");
       formVars[k] = String(v);
-      formLines.push(`${label}: ${String(v)}`);
+      formLines.push(k.slice(5).replace(/_/g, " ") + ": " + String(v));
     }
   }
-
   const variables: Record<string, string> = {
     nombre: item.lead?.name ?? "cliente",
     name: item.lead?.name ?? "cliente",
@@ -136,14 +129,145 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
     formulario: formLines.join("\n"),
     ...formVars,
   };
-
-  return content.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
+  return content.replace(/\{\{(\w+)\}\}/g, function(_m, key) {
     const val = variables[key];
-    return val !== undefined && val !== "" ? val : `{{${key}}}`;
+    return val !== undefined && val !== "" ? val : "{{" + key + "}}";
   });
 }
 
+function getActionLabel(item: QueuedAction, templates: Template[]): string | null {
+  const actions = (item.rule?.actions ?? []) as RuleAction[];
+  const tplAction = actions.find(function(a) { return a.type === "send_template"; });
+  const aiAction = actions.find(function(a) { return a.type === "send_ai_message"; });
+  if (tplAction?.templateKey) {
+    const name = templates.find(function(t) { return t.key === tplAction.templateKey; })?.name ?? tplAction.templateKey;
+    return "Plantilla: " + name + (tplAction.channel ? " (" + tplAction.channel + ")" : "");
+  }
+  if (aiAction) return "Mensaje IA";
+  return null;
+}
 
+function formatDate(d: string | null): string {
+  if (!d) return "--";
+  return new Date(d).toLocaleString("es-AR", {
+    day: "2-digit", month: "2-digit", year: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+interface DetailModalProps {
+  item: QueuedAction;
+  templates: Template[];
+  onClose: () => void;
+}
+
+function DetailModal({ item, templates, onClose }: DetailModalProps) {
+  const actions = (item.rule?.actions ?? []) as RuleAction[];
+  const tplAction = actions.find(function(a) { return a.type === "send_template"; });
+  const tpl = tplAction?.templateKey ? templates.find(function(t) { return t.key === tplAction.templateKey; }) : null;
+  const condRows = parseConditions(item.rule?.conditions ?? {});
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Detalle de la accion encolada"
+      size="lg"
+      footer={<button onClick={onClose} className="btn-secondary">Cerrar</button>}
+    >
+      <div className="space-y-5 text-sm">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Lead</p>
+            <p className="font-medium text-gray-900 dark:text-white">
+              {item.lead?.name ?? item.lead?.phone ?? item.leadId.slice(0, 8) + "..."}
+            </p>
+          </div>
+          {item.assignee && (
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Agente</p>
+              <p className="font-medium text-gray-900 dark:text-white">
+                {item.assignee.name ?? item.assignee.email}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Automatizacion</p>
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
+            <p><span className="text-gray-500">Nombre:</span> <span className="font-medium text-gray-900 dark:text-white">{item.rule?.name ?? "--"}</span></p>
+            <p><span className="text-gray-500">Trigger:</span> <span className="font-medium">{TRIGGER_LABELS[item.trigger] ?? item.trigger}</span></p>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+            {condRows.length > 0 ? "Condiciones que se cumplieron" : "Condiciones"}
+          </p>
+          {condRows.length > 0 ? (
+            <div className="space-y-1.5">
+              {condRows.map(function(row, i) {
+                return (
+                  <div key={i} className="flex flex-wrap items-center gap-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{row.field}</span>
+                    <span className="text-gray-400 text-xs">{row.operator}</span>
+                    <span className="font-semibold text-brand-600 dark:text-brand-400">&quot;{row.value}&quot;</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-gray-400 text-xs italic">Sin condiciones adicionales (aplica a todos los leads)</p>
+          )}
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Acciones configuradas</p>
+          <div className="space-y-1.5">
+            {actions.map(function(a, i) {
+              return (
+                <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300 text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">{ACTION_TYPE_LABELS[a.type] ?? a.type}</span>
+                  {a.templateKey && (
+                    <span className="text-gray-400 text-xs">-- {templates.find(function(t) { return t.key === a.templateKey; })?.name ?? a.templateKey}</span>
+                  )}
+                  {a.channel && <Badge variant="info">{a.channel}</Badge>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {tpl && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+              Mensaje que se enviara -- <span className="text-brand-600 dark:text-brand-400 normal-case font-medium">{tpl.name}</span>
+            </p>
+            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3">
+              <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{interpolateTemplate(tpl.content, item)}</p>
+            </div>
+            {tpl.attachments && tpl.attachments.length > 0 && (
+              <p className="text-xs text-gray-400 mt-1">
+                {tpl.attachments.length} adjunto(s): {tpl.attachments.map(function(a) { return a.originalName; }).join(", ")}
+              </p>
+            )}
+          </div>
+        )}
+
+        {item.error && (
+          <div>
+            <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">Error</p>
+            <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">{item.error}</p>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+export default function QueuedActionsPage() {
   const { token } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
@@ -169,23 +293,22 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, statusFilter]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const handleCancel = async (id: string) => {
     const ok = await confirm({
-      title: "Cancelar acción",
-      message: "¿Cancelar esta acción encolada? No se ejecutará.",
-      confirmLabel: "Cancelar acción",
+      title: "Cancelar accion",
+      message: "Cancelar esta accion encolada? No se ejecutara.",
+      confirmLabel: "Cancelar accion",
       danger: true,
     });
     if (!ok) return;
     try {
       await api.cancelQueuedAction(token!, id);
-      toast.success("Acción cancelada");
+      toast.success("Accion cancelada");
       load();
     } catch {
       toast.error("Error al cancelar");
@@ -205,150 +328,27 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
   const handleCancelAll = async () => {
     const ok = await confirm({
       title: "Cancelar todo",
-      message:
-        "¿Cancelar todas las acciones pendientes? Ninguna se ejecutará.",
+      message: "Cancelar todas las acciones pendientes? Ninguna se ejecutara.",
       confirmLabel: "Cancelar todas",
       danger: true,
     });
     if (!ok) return;
     try {
       const result = await api.cancelAllQueuedActions(token!);
-      toast.success(`${result.cancelled} acciones canceladas`);
+      toast.success(result.cancelled + " acciones canceladas");
       load();
     } catch {
       toast.error("Error al cancelar");
     }
   };
 
-  const pendingCount = items.filter((i) => i.status === "pending").length;
-
-  const formatDate = (d: string | null) => {
-    if (!d) return "—";
-    return new Date(d).toLocaleString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const detailModal = selectedItem ? (() => {
-    const item = selectedItem;
-    const actions = (item.rule?.actions ?? []) as RuleAction[];
-    const tplAction = actions.find((a) => a.type === "send_template");
-    const tpl = tplAction?.templateKey ? templates.find((t) => t.key === tplAction.templateKey) : null;
-    const conditions = item.rule?.conditions ?? {};
-    const condRows = renderConditions(conditions);
-
-    return (
-      <Modal
-        open
-        onClose={() => setSelectedItem(null)}
-        title="Detalle de la acción encolada"
-        size="lg"
-        footer={<button onClick={() => setSelectedItem(null)} className="btn-secondary">Cerrar</button>}
-      >
-        <div className="space-y-5 text-sm">
-
-          {/* Lead + agente */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Lead</p>
-              <p className="font-medium text-gray-900 dark:text-white">
-                {item.lead?.name ?? item.lead?.phone ?? item.leadId.slice(0, 8) + "…"}
-              </p>
-            </div>
-            {item.assignee && (
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Agente</p>
-                <p className="font-medium text-gray-900 dark:text-white">
-                  {item.assignee.name ?? item.assignee.email}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Automatización */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Automatización</p>
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
-              <p><span className="text-gray-500">Nombre:</span> <span className="font-medium text-gray-900 dark:text-white">{item.rule?.name ?? "—"}</span></p>
-              <p><span className="text-gray-500">Trigger:</span> <span className="font-medium">{TRIGGER_LABELS[item.trigger] ?? item.trigger}</span></p>
-            </div>
-          </div>
-
-          {/* Condiciones */}
-          {condRows.length > 0 ? (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones que se cumplieron</p>
-              <div className="space-y-1.5">
-                {condRows.map((row, i) => (
-                  <div key={i} className="flex flex-wrap items-center gap-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">{row.field}</span>
-                    <span className="text-gray-400 text-xs">{row.operator}</span>
-                    <span className="font-semibold text-brand-600 dark:text-brand-400">&quot;{row.value}&quot;</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones</p>
-              <p className="text-gray-400 text-xs italic">Sin condiciones adicionales (aplica a todos los leads)</p>
-            </div>
-          )}
-
-          {/* Acciones */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Acciones configuradas</p>
-            <div className="space-y-1.5">
-              {actions.map((a, i) => (
-                <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300 text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                  <span className="font-medium text-gray-700 dark:text-gray-300">{ACTION_TYPE_LABELS[a.type] ?? a.type}</span>
-                  {a.templateKey && (
-                    <span className="text-gray-400 text-xs">— {templates.find((t) => t.key === a.templateKey)?.name ?? a.templateKey}</span>
-                  )}
-                  {a.channel && <Badge variant="blue">{a.channel}</Badge>}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Contenido de la plantilla */}
-          {tpl && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
-                Mensaje que se enviará — <span className="text-brand-600 dark:text-brand-400 normal-case font-medium">{tpl.name}</span>
-              </p>
-              <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{interpolateTemplate(tpl.content, item)}</p>
-              </div>
-              {tpl.attachments && tpl.attachments.length > 0 && (
-                <p className="text-xs text-gray-400 mt-1">📎 {tpl.attachments.length} adjunto(s): {tpl.attachments.map((a) => a.originalName).join(", ")}</p>
-              )}
-            </div>
-          )}
-
-          {/* Error si hay */}
-          {item.error && (
-            <div>
-              <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">Error</p>
-              <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">{item.error}</p>
-            </div>
-          )}
-
-        </div>
-      </Modal>
-    );
-  })() : null;
+  const pendingCount = items.filter(function(i) { return i.status === "pending"; }).length;
 
   return (
     <div>
       <PageHeader
         title="Cola de automatizaciones"
-        description="Acciones encoladas fuera de horario laboral — se ejecutan automáticamente al iniciar el próximo horario"
+        description="Acciones encoladas fuera de horario laboral -- se ejecutan automaticamente al iniciar el proximo horario"
         action={
           pendingCount > 0 ? (
             <button onClick={handleCancelAll} className="btn-secondary text-red-600">
@@ -358,23 +358,22 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
         }
       />
 
-      {/* Status filter */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {["pending", "completed", "failed", "cancelled", ""].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-              statusFilter === s
-                ? "bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300 border-brand-300"
-                : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-300"
-            }`}
-          >
-            {s === ""
-              ? "Todas"
-              : STATUS_MAP[s]?.label ?? s}
-          </button>
-        ))}
+        {["pending", "completed", "failed", "cancelled", ""].map(function(s) {
+          return (
+            <button
+              key={s}
+              onClick={function() { setStatusFilter(s); }}
+              className={"px-3 py-1.5 rounded-lg text-xs font-medium border transition " + (
+                statusFilter === s
+                  ? "bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300 border-brand-300"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-300"
+              )}
+            >
+              {s === "" ? "Todas" : STATUS_MAP[s]?.label ?? s}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -385,104 +384,67 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
           title="Sin acciones encoladas"
           description={
             statusFilter === "pending"
-              ? "No hay acciones pendientes. Las automatizaciones fuera de horario aparecerán aquí."
+              ? "No hay acciones pendientes. Las automatizaciones fuera de horario apareceran aqui."
               : "No se encontraron acciones con ese filtro."
           }
         />
       ) : (
         <div className="space-y-2">
-          {items.map((item) => {
+          {items.map(function(item) {
             const st = STATUS_MAP[item.status] ?? STATUS_MAP.pending;
             const StIcon = st.icon;
+            const actionLabel = getActionLabel(item, templates);
             return (
-              <div
-                key={item.id}
-                className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3"
-              >
+              <div key={item.id} className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border
-                        ${st.color === "amber" ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" : ""}
-                        ${st.color === "blue" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800" : ""}
-                        ${st.color === "green" ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800" : ""}
-                        ${st.color === "red" ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800" : ""}
-                        ${st.color === "gray" ? "bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700" : ""}
-                      `}
-                    >
+                    <span className={
+                      "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border " +
+                      (st.color === "amber" ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" : "") +
+                      (st.color === "blue" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800" : "") +
+                      (st.color === "green" ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800" : "") +
+                      (st.color === "red" ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800" : "") +
+                      (st.color === "gray" ? "bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700" : "")
+                    }>
                       <StIcon className="w-3 h-3" /> {st.label}
                     </span>
-
-                    <Badge variant="purple">
-                      {TRIGGER_LABELS[item.trigger] ?? item.trigger}
-                    </Badge>
-
+                    <Badge variant="indigo">{TRIGGER_LABELS[item.trigger] ?? item.trigger}</Badge>
                     {item.rule && (
                       <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
                         Regla: <span className="font-medium text-gray-700 dark:text-gray-300">{item.rule.name}</span>
                       </span>
                     )}
-                    {item.rule?.actions && (() => {
-                      const actions = item.rule.actions as RuleAction[];
-                      const tplAction = actions.find((a) => a.type === "send_template");
-                      const aiAction = actions.find((a) => a.type === "send_ai_message");
-                      if (tplAction?.templateKey) {
-                        const tplName = templates.find((t) => t.key === tplAction.templateKey)?.name ?? tplAction.templateKey;
-                        return (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            📄 Plantilla: <span className="font-medium text-brand-600 dark:text-brand-400">{tplName}</span>
-                            {tplAction.channel && <span className="ml-1 text-gray-400">({tplAction.channel})</span>}
-                          </span>
-                        );
-                      }
-                      if (aiAction) {
-                        return (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            🤖 <span className="font-medium text-purple-600 dark:text-purple-400">Mensaje IA</span>
-                          </span>
-                        );
-                      }
-                      return null;
-                    })()}
+                    {actionLabel && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{actionLabel}</span>
+                    )}
                   </div>
-
                   <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                     <span>
                       Lead: <span className="font-medium text-gray-700 dark:text-gray-300">
-                        {item.lead?.name ?? item.lead?.phone ?? item.leadId.slice(0, 8) + "…"}
+                        {item.lead?.name ?? item.lead?.phone ?? item.leadId.slice(0, 8) + "..."}
                       </span>
                     </span>
                     {item.assignee && (
                       <span className="inline-flex items-center gap-1">
-                        📱 Agente: <span className="font-medium text-gray-700 dark:text-gray-300">
-                          {item.assignee.name ?? item.assignee.email}
-                        </span>
+                        Agente: <span className="font-medium text-gray-700 dark:text-gray-300">{item.assignee.name ?? item.assignee.email}</span>
                       </span>
                     )}
                     {!item.assignee && !item.assigneeId && (
-                      <span className="text-amber-500">⚠ Sin agente asignado</span>
+                      <span className="text-amber-500">Sin agente asignado</span>
                     )}
                     <span>Creado: {formatDate(item.createdAt)}</span>
                     {item.processAt && (
-                      <span className="text-brand-600 dark:text-brand-400">
-                        Programado: {formatDate(item.processAt)}
-                      </span>
+                      <span className="text-brand-600 dark:text-brand-400">Programado: {formatDate(item.processAt)}</span>
                     )}
-                    {item.attempts > 0 && (
-                      <span>Intentos: {item.attempts}</span>
-                    )}
+                    {item.attempts > 0 && <span>Intentos: {item.attempts}</span>}
                   </div>
-
                   {item.error && (
-                    <p className="text-xs text-red-500 mt-1 truncate">
-                      Error: {item.error}
-                    </p>
+                    <p className="text-xs text-red-500 mt-1 truncate">Error: {item.error}</p>
                   )}
                 </div>
-
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
-                    onClick={() => setSelectedItem(item)}
+                    onClick={function() { setSelectedItem(item); }}
                     title="Ver detalle"
                     className="p-2 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950 transition"
                   >
@@ -490,7 +452,7 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
                   </button>
                   {item.status === "pending" && (
                     <button
-                      onClick={() => handleCancel(item.id)}
+                      onClick={function() { handleCancel(item.id); }}
                       title="Cancelar"
                       className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 transition"
                     >
@@ -499,7 +461,7 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
                   )}
                   {item.status === "failed" && (
                     <button
-                      onClick={() => handleRetry(item.id)}
+                      onClick={function() { handleRetry(item.id); }}
                       title="Reintentar"
                       className="p-2 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950 transition"
                     >
@@ -513,7 +475,13 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
         </div>
       )}
 
-      {detailModal}
+      {selectedItem && (
+        <DetailModal
+          item={selectedItem}
+          templates={templates}
+          onClose={function() { setSelectedItem(null); }}
+        />
+      )}
     </div>
   );
 }
