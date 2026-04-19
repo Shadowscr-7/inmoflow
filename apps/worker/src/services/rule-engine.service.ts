@@ -92,13 +92,18 @@ export class RuleEngineService {
     if (rules.length === 0) return { rulesMatched: 0, actionsExecuted: 0 };
 
     // Build evaluation context
+    // formName: prefer source.metaFormName (for single-form sources), fallback to event context,
+    // then parse from notes header "Formulario: ..." (covers catch-all sources like "todos los formularios")
+    const formNameFromNotes = lead.notes
+      ? (lead.notes.match(/^Formulario:\s*(.+)$/m)?.[1]?.trim() ?? null)
+      : null;
     const evalContext: Record<string, unknown> = {
       ...context,
       status: lead.status,
       stageKey: lead.stage?.key,
       sourceType: lead.source?.type,
       sourceName: lead.source?.name,
-      formName: lead.source?.metaFormName ?? (context.formName as string | null) ?? null,
+      formName: lead.source?.metaFormName ?? (context.formName as string | null) ?? formNameFromNotes ?? null,
       hasPhone: !!lead.phone,
       hasEmail: !!lead.email,
       intent: lead.intent,
