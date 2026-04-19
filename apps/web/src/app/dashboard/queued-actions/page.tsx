@@ -270,7 +270,7 @@ function DetailModal({ item, templates, token, onClose, onSaved }: DetailModalPr
               {item.lead?.source && (
                 <div className="flex flex-wrap gap-x-6 gap-y-1">
                   <span><span className="text-gray-500">Fuente:</span> <span className="font-medium text-gray-800 dark:text-gray-200">{item.lead.source.name}</span></span>
-                  {(item.lead.source.metaFormName || (item.context as Record<string, unknown>)?.formName) && (
+                  {!!(item.lead.source.metaFormName || (item.context as Record<string, unknown>)?.formName) && (
                     <span>
                       <span className="text-gray-500">Formulario:</span>{" "}
                       <span className="font-medium text-gray-800 dark:text-gray-200">
