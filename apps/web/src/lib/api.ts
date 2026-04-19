@@ -1027,7 +1027,7 @@ export const api = {
     return apiFetch<QueuedAction>(`/queued-actions/${id}/message`, {
       token,
       method: "PATCH",
-      body: { message },
+      body: JSON.stringify({ message }),
     });
   },
 
