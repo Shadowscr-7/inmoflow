@@ -330,6 +330,7 @@ export interface QueuedAction {
   createdAt: string;
   processAt: string | null;
   rule?: { id: string; name: string; trigger: string; actions?: RuleAction[]; conditions?: Record<string, unknown> };
+  messageOverride?: string | null;
   lead?: { id: string; name: string | null; phone: string | null } | null;
   assignee?: { id: string; name: string | null; email: string } | null;
 }
@@ -1021,6 +1022,13 @@ export const api = {
   },
   retryQueuedAction(token: string, id: string) {
     return apiFetch<QueuedAction>(`/queued-actions/${id}/retry`, { token, method: "PATCH" });
+  },
+  updateQueuedActionMessage(token: string, id: string, message: string | null) {
+    return apiFetch<QueuedAction>(`/queued-actions/${id}/message`, {
+      token,
+      method: "PATCH",
+      body: { message },
+    });
   },
 
   // ─── Notifications ────────────────────────────────

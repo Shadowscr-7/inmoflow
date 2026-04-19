@@ -420,18 +420,19 @@ model Rule {
 // ─── QUEUED ACTIONS (out-of-hours automation queue) ───
 
 model QueuedAction {
-  id         String   @id @default(uuid())
-  tenantId   String
-  ruleId     String
-  leadId     String
-  assigneeId String?  // agent who owns this lead — messages go from their WhatsApp
-  trigger    String
-  context    Json     // original evaluation context snapshot
-  status     String   @default("pending") // pending | processing | completed | failed | cancelled
-  attempts   Int      @default(0)
-  error      String?
-  createdAt  DateTime @default(now())
-  processAt  DateTime? // calculated next working-hours window start
+  id              String    @id @default(uuid())
+  tenantId        String
+  ruleId          String
+  leadId          String
+  assigneeId      String?   // agent who owns this lead — messages go from their WhatsApp
+  trigger         String
+  context         Json      // original evaluation context snapshot
+  status          String    @default("pending") // pending | processing | completed | failed | cancelled
+  attempts        Int       @default(0)
+  error           String?
+  messageOverride String?   // optional manual text override for the template message
+  createdAt       DateTime  @default(now())
+  processAt       DateTime? // calculated next working-hours window start
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rule   Rule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)

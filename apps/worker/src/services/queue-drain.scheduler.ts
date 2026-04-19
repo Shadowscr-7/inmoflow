@@ -124,6 +124,7 @@ export class QueueDrainScheduler {
       leadId: string;
       assigneeId: string | null;
       attempts: number;
+      messageOverride: string | null;
       rule: { id: string; name: string; enabled: boolean; workingHours: unknown } | null;
     }>,
   ): Promise<{ processed: number; failed: number; skipped: number }> {
@@ -179,6 +180,7 @@ export class QueueDrainScheduler {
           item.tenantId,
           item.ruleId,
           item.leadId,
+          item.messageOverride ?? undefined,
         );
 
         await this.prisma.queuedAction.update({

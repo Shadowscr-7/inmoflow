@@ -103,4 +103,20 @@ export class QueuedActionsService {
       data: { status: "pending", error: null },
     });
   }
+
+  /** Update the manual message override for a pending queued action */
+  async updateMessageOverride(tenantId: string, id: string, messageOverride: string | null) {
+    const item = await this.prisma.queuedAction.findFirst({
+      where: { id, tenantId },
+    });
+    if (!item) throw new NotFoundException("Queued action not found");
+    if (item.status !== "pending") {
+      throw new NotFoundException("Only pending actions can be edited");
+    }
+
+    return this.prisma.queuedAction.update({
+      where: { id },
+      data: { messageOverride },
+    });
+  }
 }

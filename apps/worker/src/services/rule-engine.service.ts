@@ -258,6 +258,7 @@ export class RuleEngineService {
     tenantId: string,
     ruleId: string,
     leadId: string,
+    messageOverride?: string,
   ): Promise<{ actionsExecuted: number }> {
     const rule = await this.prisma.rule.findFirst({
       where: { id: ruleId, tenantId },
@@ -286,7 +287,7 @@ export class RuleEngineService {
           actionsExecuted++;
           break;
         }
-        await this.executeAction(tenantId, leadId, action);
+        await this.executeAction(tenantId, leadId, action, {}, messageOverride);
         actionsExecuted++;
       } catch (err) {
         this.logger.error(`Action ${action.type} failed for rule "${rule.name}": ${(err as Error).message}`);
@@ -403,6 +404,7 @@ export class RuleEngineService {
     leadId: string,
     action: RuleAction,
     ctx: Record<string, unknown> = {},
+    messageOverride?: string,
   ): Promise<void> {
     switch (action.type) {
       case "assign":
@@ -412,7 +414,7 @@ export class RuleEngineService {
         await this.actionAssignByFormName(tenantId, leadId, ctx);
         break;
       case "send_template":
-        await this.actionSendTemplate(tenantId, leadId, action);
+        await this.actionSendTemplate(tenantId, leadId, action, messageOverride);
         break;
       case "change_status":
         await this.actionChangeStatus(tenantId, leadId, action);
@@ -519,7 +521,7 @@ export class RuleEngineService {
     );
   }
 
-  private async actionSendTemplate(tenantId: string, leadId: string, action: RuleAction) {
+  private async actionSendTemplate(tenantId: string, leadId: string, action: RuleAction, messageOverride?: string) {
     if (!action.templateKey) return;
 
     const template = await this.prisma.template.findUnique({
@@ -621,10 +623,17 @@ export class RuleEngineService {
       ...Object.fromEntries(Object.entries(formFields).map(([k, v]) => [`form_${k}`, v])),
     };
 
-    const rendered = template.content.replace(
-      /\{\{(\w+)\}\}/g,
-      (_match: string, key: string) => variables[key] ?? `{{${key}}}`,
-    );
+    // Use manual override if provided, otherwise render the template with variables
+    const rendered = messageOverride
+      ? messageOverride
+      : template.content.replace(
+          /\{\{(\w+)\}\}/g,
+          (_match: string, key: string) => variables[key] ?? `{{${key}}}`,
+        );
+
+    if (messageOverride) {
+      this.logger.log(`Using messageOverride for lead ${leadId} (template: "${action.templateKey}")`);
+    }
 
     // ── Deduplication: prevent sending the same template to the same lead
     // within a short window (e.g. BullMQ job retry after transient failure).

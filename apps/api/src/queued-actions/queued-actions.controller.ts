@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Query,
+  Body,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -78,5 +79,17 @@ export class QueuedActionsController {
   ) {
     const assigneeId = user.role === "AGENT" ? user.userId : undefined;
     return this.service.retry(tenantId, id, assigneeId);
+  }
+
+  /** Update the manual message override for a pending queued action */
+  @Patch(":id/message")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN", "BUSINESS", "AGENT")
+  updateMessage(
+    @TenantId() tenantId: string,
+    @Param("id") id: string,
+    @Body("message") message: string | null,
+  ) {
+    return this.service.updateMessageOverride(tenantId, id, message ?? null);
   }
 }
