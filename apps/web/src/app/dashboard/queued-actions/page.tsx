@@ -107,6 +107,29 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
       formLines.push(k.slice(5).replace(/_/g, " ") + ": " + String(v));
     }
   }
+
+  // Resolve {{propiedad}}: prefer explicit ctx.propiedad, then derive from form fields
+  // (mirrors the worker logic: tipo + zona, or the "propiedad" form field directly)
+  let propiedadVal = String(ctx.propiedad ?? "");
+  if (!propiedadVal) {
+    const SPANISH_ARTICLES: Record<string, string> = {
+      casa: "la casa", apartamento: "el apartamento", apto: "el apartamento",
+      depto: "el departamento", terreno: "el terreno", local: "el local",
+      deposito: "el depósito", galpon: "el galpón",
+      garage: "el garage", oficina: "la oficina",
+    };
+    const propField = formVars["form_propiedad"] ?? formVars["form_tipo_de_propiedad"] ?? formVars["form_tipo_propiedad"] ?? "";
+    const zonaField = formVars["form_zona"] ?? formVars["form_barrio"] ?? formVars["form_ubicacion"] ?? "";
+    if (propField) {
+      const article = SPANISH_ARTICLES[propField.toLowerCase()] ?? propField;
+      propiedadVal = zonaField ? `${article} en ${zonaField}` : article;
+    } else if (ctx.tipo_propiedad) {
+      const t = String(ctx.tipo_propiedad);
+      const article = SPANISH_ARTICLES[t.toLowerCase()] ?? t;
+      propiedadVal = ctx.zona ? `${article} en ${String(ctx.zona)}` : article;
+    }
+  }
+
   const variables: Record<string, string> = {
     nombre: item.lead?.name ?? "cliente",
     name: item.lead?.name ?? "cliente",
@@ -122,10 +145,10 @@ function interpolateTemplate(content: string, item: QueuedAction): string {
     status: String(ctx.status ?? ""),
     intencion: String(ctx.intent ?? ""),
     intent: String(ctx.intent ?? ""),
-    propiedad: String(ctx.propiedad ?? ""),
-    tipo_propiedad: String(ctx.tipo_propiedad ?? ""),
-    zona: String(ctx.zona ?? ""),
-    interesado: String(ctx.interesado ?? ""),
+    propiedad: propiedadVal,
+    tipo_propiedad: String(ctx.tipo_propiedad ?? formVars["form_tipo_propiedad"] ?? formVars["form_tipo_de_propiedad"] ?? ""),
+    zona: String(ctx.zona ?? formVars["form_zona"] ?? ""),
+    interesado: String(ctx.interesado ?? formVars["form_interes"] ?? ""),
     formulario: formLines.join("\n"),
     ...formVars,
   };

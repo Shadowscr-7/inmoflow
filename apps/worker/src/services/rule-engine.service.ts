@@ -123,6 +123,35 @@ export class RuleEngineService {
     if (formFields["zona"]) evalContext["zona"] = formFields["zona"];
     if (formFields["interes"]) evalContext["interesado"] = formFields["interes"];
 
+    // Pre-resolve {{propiedad}} so the QueuedAction context has the display-ready value.
+    // Priority 1: extract from the qualifier question in notes "contacto por X de U$S..."
+    // Priority 2: compose from tipo_propiedad + zona form fields
+    if (!evalContext["propiedad"]) {
+      const notesText = lead.notes ?? "";
+      const questionMatch = notesText.match(/(?:contacto\s+por|por\s+la?\s+)\s+(.+?)\s+de\s+[Uu]\$[Ss]/i);
+      if (questionMatch?.[1]) {
+        evalContext["propiedad"] = questionMatch[1].trim();
+      } else {
+        const SPANISH_ARTICLES: Record<string, string> = {
+          casa: "la casa", apartamento: "el apartamento", apto: "el apartamento",
+          depto: "el departamento", terreno: "el terreno", local: "el local",
+          deposito: "el depósito", galpón: "el galpón", galpon: "el galpón",
+          garage: "el garage", oficina: "la oficina",
+        };
+        // Try direct "propiedad" form field first
+        const propField = formFields["propiedad"] ?? formFields["tipo_de_propiedad"] ?? formFields["tipo_propiedad"] ?? "";
+        const zonaField = formFields["zona"] ?? "";
+        if (propField) {
+          const article = SPANISH_ARTICLES[propField.toLowerCase()] ?? propField;
+          evalContext["propiedad"] = zonaField ? `${article} en ${zonaField}` : article;
+        } else if (evalContext["tipo_propiedad"]) {
+          const t = String(evalContext["tipo_propiedad"]);
+          const article = SPANISH_ARTICLES[t.toLowerCase()] ?? t;
+          evalContext["propiedad"] = zonaField ? `${article} en ${zonaField}` : article;
+        }
+      }
+    }
+
     let rulesMatched = 0;
     let actionsExecuted = 0;
     let rulesQueued = 0;
