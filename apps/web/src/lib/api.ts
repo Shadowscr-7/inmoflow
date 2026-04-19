@@ -329,7 +329,7 @@ export interface QueuedAction {
   error: string | null;
   createdAt: string;
   processAt: string | null;
-  rule?: { id: string; name: string; trigger: string; actions?: RuleAction[] };
+  rule?: { id: string; name: string; trigger: string; actions?: RuleAction[]; conditions?: Record<string, unknown> };
   lead?: { id: string; name: string | null; phone: string | null } | null;
   assignee?: { id: string; name: string | null; email: string } | null;
 }

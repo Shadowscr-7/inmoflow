@@ -12,11 +12,13 @@ import {
   AlertCircle,
   Loader2,
   Zap,
+  Info,
 } from "lucide-react";
 import {
   PageHeader,
   EmptyState,
   Badge,
+  Modal,
   PageLoader,
   useToast,
   useConfirm,
@@ -41,7 +43,107 @@ const TRIGGER_LABELS: Record<string, string> = {
   scheduled: "Programado",
 };
 
-export default function QueuedActionsPage() {
+const CONDITION_FIELD_LABELS: Record<string, string> = {
+  status: "Estado del lead",
+  sourceType: "Fuente de origen",
+  primaryChannel: "Canal principal",
+  hasAssignee: "Tiene agente asignado",
+  interesado: "Interesado en la propiedad",
+  stageKey: "Etapa actual",
+  sourceName: "Nombre de fuente",
+  formName: "Nombre del formulario",
+  formField: "Respuesta del formulario",
+  intent: "Intención",
+  messageContent: "Contenido del mensaje",
+  noResponseDays: "Días sin respuesta",
+};
+
+const OPERATOR_LABELS: Record<string, string> = {
+  equals: "es igual a",
+  not_equals: "no es igual a",
+  contains: "contiene",
+  not_contains: "no contiene",
+  greater_than: "mayor que",
+  less_than: "menor que",
+};
+
+function renderConditions(conditions: Record<string, unknown>) {
+  const rows: { field: string; operator: string; value: string }[] = [];
+  for (const [key, val] of Object.entries(conditions)) {
+    let field = key;
+    if (key.startsWith("form_")) {
+      field = `Respuesta del formulario (${key.slice(5).replace(/_/g, " ")})`;
+    } else {
+      field = CONDITION_FIELD_LABELS[key] ?? key;
+    }
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      const entries = Object.entries(val as Record<string, unknown>);
+      if (entries.length > 0) {
+        rows.push({ field, operator: OPERATOR_LABELS[entries[0][0]] ?? entries[0][0], value: String(entries[0][1]) });
+      }
+    } else {
+      rows.push({ field, operator: "es igual a", value: String(val) });
+    }
+  }
+  return rows;
+}
+
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  assign: "Asignar agente",
+  assign_by_form_name: "Asignar por nombre de formulario",
+  send_template: "Enviar plantilla",
+  change_status: "Cambiar estado",
+  change_stage: "Cambiar etapa",
+  add_note: "Agregar nota",
+  notify: "Notificar",
+  send_ai_message: "Mensaje IA",
+  wait: "Esperar",
+};
+
+function interpolateTemplate(content: string, item: QueuedAction): string {
+  const ctx = (item.context ?? {}) as Record<string, unknown>;
+
+  // Build form_ variables from context
+  const formLines: string[] = [];
+  const formVars: Record<string, string> = {};
+  for (const [k, v] of Object.entries(ctx)) {
+    if (k.startsWith("form_") && v !== undefined && v !== null && v !== "") {
+      const label = k.slice(5).replace(/_/g, " ");
+      formVars[k] = String(v);
+      formLines.push(`${label}: ${String(v)}`);
+    }
+  }
+
+  const variables: Record<string, string> = {
+    nombre: item.lead?.name ?? "cliente",
+    name: item.lead?.name ?? "cliente",
+    telefono: item.lead?.phone ?? "",
+    phone: item.lead?.phone ?? "",
+    agente: item.assignee?.name ?? item.assignee?.email ?? "",
+    agent: item.assignee?.name ?? item.assignee?.email ?? "",
+    fuente: String(ctx.sourceName ?? ""),
+    source: String(ctx.sourceName ?? ""),
+    etapa: String(ctx.stageKey ?? ""),
+    stage: String(ctx.stageKey ?? ""),
+    estado: String(ctx.status ?? ""),
+    status: String(ctx.status ?? ""),
+    intencion: String(ctx.intent ?? ""),
+    intent: String(ctx.intent ?? ""),
+    propiedad: String(ctx.propiedad ?? ""),
+    tipo_propiedad: String(ctx.tipo_propiedad ?? ""),
+    zona: String(ctx.zona ?? ""),
+    interesado: String(ctx.interesado ?? ""),
+    formulario: formLines.join("\n"),
+    ...formVars,
+  };
+
+  return content.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
+    const val = variables[key];
+    return val !== undefined && val !== "" ? val : `{{${key}}}`;
+  });
+}
+
+
   const { token } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
@@ -49,6 +151,7 @@ export default function QueuedActionsPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("pending");
+  const [selectedItem, setSelectedItem] = useState<QueuedAction | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -267,6 +370,13 @@ export default function QueuedActionsPage() {
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => setSelectedItem(item)}
+                    title="Ver detalle"
+                    className="p-2 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950 transition"
+                  >
+                    <Info className="w-4 h-4" />
+                  </button>
                   {item.status === "pending" && (
                     <button
                       onClick={() => handleCancel(item.id)}
@@ -291,6 +401,119 @@ export default function QueuedActionsPage() {
           })}
         </div>
       )}
+
+      {/* ─── Detail Modal ──────────────────────────────── */}
+      {selectedItem && (() => {
+        const item = selectedItem;
+        const actions = (item.rule?.actions ?? []) as RuleAction[];
+        const tplAction = actions.find((a) => a.type === "send_template");
+        const tpl = tplAction?.templateKey ? templates.find((t) => t.key === tplAction.templateKey) : null;
+        const conditions = item.rule?.conditions ?? {};
+        const condRows = renderConditions(conditions);
+
+        return (
+          <Modal
+            open
+            onClose={() => setSelectedItem(null)}
+            title="Detalle de la acción encolada"
+            size="lg"
+            footer={<button onClick={() => setSelectedItem(null)} className="btn-secondary">Cerrar</button>}
+          >
+            <div className="space-y-5 text-sm">
+
+              {/* Lead + agente */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Lead</p>
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {item.lead?.name ?? item.lead?.phone ?? item.leadId.slice(0, 8) + "…"}
+                  </p>
+                </div>
+                {item.assignee && (
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Agente</p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {item.assignee.name ?? item.assignee.email}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Automatización */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Automatización</p>
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
+                  <p><span className="text-gray-500">Nombre:</span> <span className="font-medium text-gray-900 dark:text-white">{item.rule?.name ?? "—"}</span></p>
+                  <p><span className="text-gray-500">Trigger:</span> <span className="font-medium">{TRIGGER_LABELS[item.trigger] ?? item.trigger}</span></p>
+                </div>
+              </div>
+
+              {/* Condiciones */}
+              {condRows.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones que se cumplieron</p>
+                  <div className="space-y-1.5">
+                    {condRows.map((row, i) => (
+                      <div key={i} className="flex flex-wrap items-center gap-1.5 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                        <span className="font-medium text-gray-700 dark:text-gray-300">{row.field}</span>
+                        <span className="text-gray-400 text-xs">{row.operator}</span>
+                        <span className="font-semibold text-brand-600 dark:text-brand-400">&quot;{row.value}&quot;</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {condRows.length === 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Condiciones</p>
+                  <p className="text-gray-400 text-xs italic">Sin condiciones adicionales (aplica a todos los leads)</p>
+                </div>
+              )}
+
+              {/* Acciones */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Acciones configuradas</p>
+                <div className="space-y-1.5">
+                  {actions.map((a, i) => (
+                    <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300 text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{ACTION_TYPE_LABELS[a.type] ?? a.type}</span>
+                      {a.templateKey && (
+                        <span className="text-gray-400 text-xs">— {templates.find((t) => t.key === a.templateKey)?.name ?? a.templateKey}</span>
+                      )}
+                      {a.channel && <Badge variant="blue">{a.channel}</Badge>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Contenido de la plantilla */}
+              {tpl && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
+                    Mensaje que se enviará — <span className="text-brand-600 dark:text-brand-400 normal-case font-medium">{tpl.name}</span>
+                  </p>
+                  <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                    <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{interpolateTemplate(tpl.content, item)}</p>
+                  </div>
+                  {tpl.attachments && tpl.attachments.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">📎 {tpl.attachments.length} adjunto(s): {tpl.attachments.map((a) => a.originalName).join(", ")}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Error si hay */}
+              {item.error && (
+                <div>
+                  <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">Error</p>
+                  <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950 rounded-lg px-3 py-2">{item.error}</p>
+                </div>
+              )}
+
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

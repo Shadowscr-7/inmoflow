@@ -20,7 +20,7 @@ export class QueuedActionsService {
     return this.prisma.queuedAction.findMany({
       where,
       include: {
-        rule: { select: { id: true, name: true, trigger: true, actions: true } },
+        rule: { select: { id: true, name: true, trigger: true, actions: true, conditions: true } },
       },
       // We also need lead name + assignee name for the UI.
       // QueuedAction doesn't have direct relations to Lead/User,
