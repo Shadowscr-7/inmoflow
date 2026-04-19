@@ -284,6 +284,18 @@ export class TelegramProvider implements OnModuleInit {
       });
 
       if (!lead) {
+        // Only auto-create leads if tenant has an active TELEGRAM_INBOUND source.
+        const telegramSource = await this.prisma.leadSource.findFirst({
+          where: { tenantId, type: "TELEGRAM_INBOUND", isActive: true },
+        });
+
+        if (!telegramSource) {
+          this.logger.debug(
+            `Telegram inbound: no active TELEGRAM_INBOUND source for tenant ${tenantId.slice(0, 8)} — skipping auto-lead creation for user ${telegramUserId}`,
+          );
+          return;
+        }
+
         const defaultStage = await this.prisma.leadStage.findFirst({
           where: { tenantId, isDefault: true },
         });
@@ -296,8 +308,8 @@ export class TelegramProvider implements OnModuleInit {
             primaryChannel: "TELEGRAM",
             status: "NEW",
             stageId: defaultStage?.id,
-            // Auto-assign to the user who owns this channel
             assigneeId: channel.userId,
+            sourceId: telegramSource.id,
           },
         });
 
