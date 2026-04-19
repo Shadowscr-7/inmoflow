@@ -171,10 +171,18 @@ function DetailModal({ item, templates, token, onClose, onSaved }: DetailModalPr
   const condRows = parseConditions(item.rule?.conditions ?? {});
 
   const defaultText = tpl ? interpolateTemplate(tpl.content, item) : "";
+  const [selectedTplKey, setSelectedTplKey] = useState<string>(tpl?.key ?? "");
   const [editedMsg, setEditedMsg] = useState<string>(item.messageOverride ?? defaultText);
   const [saving, setSaving] = useState(false);
   const isDirty = editedMsg !== (item.messageOverride ?? defaultText);
   const isOverridden = item.messageOverride != null && item.messageOverride !== defaultText;
+
+  const handleTplChange = function(key: string) {
+    setSelectedTplKey(key);
+    if (!key) return;
+    const chosen = templates.find(function(t) { return t.key === key; });
+    if (chosen) setEditedMsg(interpolateTemplate(chosen.content, item));
+  };
 
   const handleSave = async function() {
     setSaving(true);
@@ -293,8 +301,7 @@ function DetailModal({ item, templates, token, onClose, onSaved }: DetailModalPr
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                Mensaje que se enviara --{" "}
-                <span className="text-brand-600 dark:text-brand-400 normal-case font-medium">{tpl.name}</span>
+                Mensaje que se enviara
                 {isOverridden && (
                   <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 px-1.5 py-0.5 rounded-full normal-case font-medium">Modificado</span>
                 )}
@@ -309,6 +316,26 @@ function DetailModal({ item, templates, token, onClose, onSaved }: DetailModalPr
                 </button>
               )}
             </div>
+
+            {isPending && (
+              <div className="mb-2">
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Plantilla base</label>
+                <select
+                  value={selectedTplKey}
+                  onChange={function(e) { handleTplChange(e.target.value); }}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  {templates.filter(function(t) { return t.enabled !== false; }).map(function(t) {
+                    return (
+                      <option key={t.key} value={t.key}>
+                        {t.name}{t.key === tpl.key ? " (original)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
             {isPending ? (
               <textarea
                 value={editedMsg}
