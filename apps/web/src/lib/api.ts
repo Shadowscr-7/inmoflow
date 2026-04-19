@@ -331,7 +331,19 @@ export interface QueuedAction {
   processAt: string | null;
   rule?: { id: string; name: string; trigger: string; actions?: RuleAction[]; conditions?: Record<string, unknown> };
   messageOverride?: string | null;
-  lead?: { id: string; name: string | null; phone: string | null } | null;
+  lead?: {
+    id: string;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    source?: {
+      id: string;
+      name: string;
+      type: string;
+      metaFormName: string | null;
+      metaPageName: string | null;
+    } | null;
+  } | null;
   assignee?: { id: string; name: string | null; email: string } | null;
 }
 

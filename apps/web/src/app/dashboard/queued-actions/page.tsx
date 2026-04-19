@@ -250,6 +250,64 @@ function DetailModal({ item, templates, token, onClose, onSaved }: DetailModalPr
           )}
         </div>
 
+        {/* ── Datos del lead ── */}
+        {(item.lead?.email || item.lead?.phone || item.lead?.source || Object.keys(item.context ?? {}).some(function(k) { return k.startsWith("form_"); })) && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Datos del lead</p>
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-2 text-sm">
+              {/* Contact info */}
+              {(item.lead?.phone || item.lead?.email) && (
+                <div className="flex flex-wrap gap-x-6 gap-y-1">
+                  {item.lead?.phone && (
+                    <span><span className="text-gray-500">Teléfono:</span> <span className="font-medium text-gray-800 dark:text-gray-200">{item.lead.phone}</span></span>
+                  )}
+                  {item.lead?.email && (
+                    <span><span className="text-gray-500">Email:</span> <span className="font-medium text-gray-800 dark:text-gray-200">{item.lead.email}</span></span>
+                  )}
+                </div>
+              )}
+              {/* Source info */}
+              {item.lead?.source && (
+                <div className="flex flex-wrap gap-x-6 gap-y-1">
+                  <span><span className="text-gray-500">Fuente:</span> <span className="font-medium text-gray-800 dark:text-gray-200">{item.lead.source.name}</span></span>
+                  {(item.lead.source.metaFormName || (item.context as Record<string, unknown>)?.formName) && (
+                    <span>
+                      <span className="text-gray-500">Formulario:</span>{" "}
+                      <span className="font-medium text-gray-800 dark:text-gray-200">
+                        {item.lead.source.metaFormName ?? String((item.context as Record<string, unknown>).formName)}
+                      </span>
+                    </span>
+                  )}
+                  {item.lead.source.metaPageName && (
+                    <span><span className="text-gray-500">Campaña / Página:</span> <span className="font-medium text-gray-800 dark:text-gray-200">{item.lead.source.metaPageName}</span></span>
+                  )}
+                </div>
+              )}
+              {/* Form Q&A */}
+              {(function() {
+                const ctx = (item.context ?? {}) as Record<string, unknown>;
+                const formEntries = Object.entries(ctx).filter(function([k]) { return k.startsWith("form_"); });
+                if (formEntries.length === 0) return null;
+                return (
+                  <div className="mt-1 border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1">
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Preguntas del formulario</p>
+                    {formEntries.map(function([k, v]) {
+                      const label = k.slice(5).replace(/_/g, " ");
+                      const displayLabel = label.charAt(0).toUpperCase() + label.slice(1);
+                      return (
+                        <div key={k} className="flex flex-col">
+                          <span className="text-[11px] text-gray-500 dark:text-gray-400">{displayLabel}</span>
+                          <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">{String(v)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         <div>
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Automatizacion</p>
           <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">

@@ -286,7 +286,7 @@ export class TelegramProvider implements OnModuleInit {
       if (!lead) {
         // Only auto-create leads if tenant has an active TELEGRAM_INBOUND source.
         const telegramSource = await this.prisma.leadSource.findFirst({
-          where: { tenantId, type: "TELEGRAM_INBOUND", isActive: true },
+          where: { tenantId, type: "TELEGRAM_INBOUND", enabled: true },
         });
 
         if (!telegramSource) {

@@ -38,7 +38,21 @@ export class QueuedActionsService {
       const [leads, users] = await Promise.all([
         this.prisma.lead.findMany({
           where: { id: { in: leadIds } },
-          select: { id: true, name: true, phone: true },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            source: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                metaFormName: true,
+                metaPageName: true,
+              },
+            },
+          },
         }),
         assigneeIds.length > 0
           ? this.prisma.user.findMany({

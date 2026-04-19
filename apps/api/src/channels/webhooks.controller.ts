@@ -462,7 +462,7 @@ export class WebhooksController {
       // Only auto-create leads if tenant has an active WHATSAPP_INBOUND source.
       // If not, this is just a conversation from an existing contact — log and skip lead creation.
       const whatsappSource = await this.prisma.leadSource.findFirst({
-        where: { tenantId, type: "WHATSAPP_INBOUND", isActive: true },
+        where: { tenantId, type: "WHATSAPP_INBOUND", enabled: true },
       });
 
       if (!whatsappSource) {
