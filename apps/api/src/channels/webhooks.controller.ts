@@ -396,9 +396,7 @@ export class WebhooksController {
     const msgData = payload.data;
     if (!msgData) return;
 
-    // Only handle incoming messages (from the client, not from the agent's phone)
     const isFromMe = msgData.key?.fromMe === true;
-    if (isFromMe) return;
 
     // Skip group messages
     const remoteJid = msgData.key?.remoteJid ?? "";
@@ -423,6 +421,50 @@ export class WebhooksController {
       msgData.message?.extendedTextMessage?.text ??
       "[media]";
     const pushName = msgData.pushName ?? undefined;
+
+    // Handle outgoing messages (sent from WhatsApp app directly, not via CRM)
+    if (isFromMe) {
+      const providerMessageId = msgData.key?.id;
+      // If already stored by the CRM when it sent the message, skip to avoid duplicates
+      if (providerMessageId) {
+        const existing = await this.prisma.message.findFirst({
+          where: { tenantId, providerMessageId },
+          select: { id: true },
+        });
+        if (existing) return;
+      }
+
+      // Find the lead by phone (remoteJid is the contact, not the sender)
+      const lead = await this.prisma.lead.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { phone: phoneWithoutPlus },
+            { phone: phoneWithPlus },
+            { whatsappFrom: phoneWithoutPlus },
+            { whatsappFrom: phoneWithPlus },
+          ],
+        },
+      });
+      if (!lead) return; // Don't auto-create leads from outgoing messages
+
+      await this.prisma.message.create({
+        data: {
+          tenantId,
+          leadId: lead.id,
+          direction: "OUT",
+          channel: "WHATSAPP",
+          to: phoneWithPlus,
+          content,
+          providerMessageId,
+          status: "sent",
+          rawPayload: msgData as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      this.logger.log(`WA msg OUT (from phone): → ${phoneWithPlus} lead ${lead.id.slice(0, 8)}`);
+      return;
+    }
 
     // Find or create lead by phone — try both formats (with and without "+")
     let lead = await this.prisma.lead.findFirst({
