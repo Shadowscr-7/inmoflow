@@ -12,11 +12,6 @@ export interface SubtitleChunk {
   endMs: number;
 }
 
-const VOICES = {
-  female: "es-AR-ElenaNeural",
-  male: "es-AR-TomasNeural",
-} as const;
-
 const PYTHON_CMD = process.env.PYTHON_CMD ?? "python";
 
 function findScriptPath(): string {
@@ -40,7 +35,7 @@ export class TtsService {
     outputDir: string,
     jobId: string,
   ): Promise<{ audioDataUrl: string; subtitleChunks: SubtitleChunk[]; totalMs: number } | null> {
-    const voice = VOICES[gender];
+    const voice = gender; // script maps "female"/"male" to the right engine voice
     const audioPath = path.join(outputDir, `${jobId}_tts.mp3`);
     const subtitlePath = path.join(outputDir, `${jobId}_subs.json`);
     const inputPath = path.join(outputDir, `${jobId}_tts_input.json`);
@@ -48,9 +43,10 @@ export class TtsService {
     this.logger.log(`TTS start — voice=${voice}, script=${this.scriptPath}, exists=${fs.existsSync(this.scriptPath)}`);
 
     try {
+      const voicesDir = path.join(outputDir, "..", "_piper_voices");
       fs.writeFileSync(
         inputPath,
-        JSON.stringify({ text, voice, audioPath, subtitlePath }),
+        JSON.stringify({ text, voice, audioPath, subtitlePath, voicesDir }),
         "utf-8",
       );
 
@@ -80,6 +76,7 @@ export class TtsService {
         error?: string;
         totalMs?: number;
         wordCount?: number;
+        engine?: string;
       };
 
       if (result.error) {
@@ -96,12 +93,16 @@ export class TtsService {
         fs.readFileSync(subtitlePath, "utf-8"),
       );
 
-      // Convert MP3 to base64 data URL so Remotion's Chromium can access it inline
+      // Convert audio to base64 data URL — detect mime from file header
       const audioBuffer = fs.readFileSync(audioPath);
-      const audioDataUrl = `data:audio/mpeg;base64,${audioBuffer.toString("base64")}`;
+      const isWav =
+        audioBuffer[0] === 0x52 && audioBuffer[1] === 0x49 &&
+        audioBuffer[2] === 0x46 && audioBuffer[3] === 0x46; // "RIFF"
+      const mime = isWav ? "audio/wav" : "audio/mpeg";
+      const audioDataUrl = `data:${mime};base64,${audioBuffer.toString("base64")}`;
 
       this.logger.log(
-        `TTS OK — words=${result.wordCount}, ms=${result.totalMs}, audioSize=${audioBuffer.length}B, chunks=${subtitleChunks.length}`,
+        `TTS OK [${result.engine ?? "?"}] — words=${result.wordCount}, ms=${result.totalMs}, audioSize=${audioBuffer.length}B, chunks=${subtitleChunks.length}`,
       );
 
       return { audioDataUrl, subtitleChunks, totalMs: result.totalMs ?? 0 };
