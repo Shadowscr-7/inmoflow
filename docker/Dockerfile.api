@@ -4,7 +4,7 @@ RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 # Python + Pillow for Instagram image generation + edge-tts for TTS narration
 RUN apk add --no-cache python3 py3-pip py3-pillow \
  && ln -sf /usr/bin/python3 /usr/bin/python \
- && pip3 install --no-cache-dir edge-tts
+ && pip3 install --no-cache-dir --break-system-packages edge-tts
 
 # Chromium for Remotion video rendering
 RUN apk add --no-cache chromium font-noto font-noto-emoji
