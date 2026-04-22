@@ -2,15 +2,17 @@
 
 import { useAuth } from "@/lib/auth";
 import { api, Property, PropertyMedia, WhatsAppShare, API_URL } from "@/lib/api";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Building2, Plus, Search, X, Edit2, Trash2, MapPin, BedDouble, Bath, Car, Ruler, DollarSign, Eye, QrCode, Share2, ExternalLink,
   Image as ImageIcon, Video, Link2, Loader2, GripVertical, Upload, ChevronLeft, ChevronRight, User as UserIcon, Instagram, Download, Film,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Spinner } from "@/components/ui/spinner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
+import { InstagramPostCard } from "@/components/instagram-post-card";
 
 const STATUS_OPTIONS = [
   { value: "ACTIVE", label: "Activa", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
@@ -68,7 +70,8 @@ export default function PropertiesPage() {
   const [pendingMedia, setPendingMedia] = useState<Array<{ url: string; kind?: string }>>([]);
   // Instagram image generation
   const [igLoading, setIgLoading] = useState<string | null>(null);
-  const [igPreview, setIgPreview] = useState<{ url: string; blob: Blob; property: Property } | null>(null);
+  const [igPreview, setIgPreview] = useState<Property | null>(null);
+  const igCardRef = useRef<HTMLDivElement>(null);
   // Reel video generation
   const [reelTarget, setReelTarget] = useState<Property | null>(null);
   const [reelForm, setReelForm] = useState({ agentName: "", agentPhone: "", voiceGender: "female" as "female" | "male" });
@@ -229,31 +232,32 @@ export default function PropertiesPage() {
     } catch (e: unknown) { toast.error(getErrorMessage(e)); }
   };
 
-  const handleInstagramImage = async (p: Property) => {
-    if (!token) return;
-    setIgLoading(p.id);
+  const handleInstagramImage = (p: Property) => {
+    setIgPreview(p);
+  };
+
+  const handleIgDownload = async () => {
+    if (!igCardRef.current || !igPreview) return;
+    setIgLoading("download");
     try {
-      const blob = await api.getInstagramImage(token, p.id);
-      const url = URL.createObjectURL(blob);
-      setIgPreview({ url, blob, property: p });
-    } catch (e: unknown) {
-      toast.error(getErrorMessage(e));
+      const { toPng } = await import("html-to-image");
+      const dataUrl = await toPng(igCardRef.current, {
+        width: 1080,
+        height: 1080,
+        pixelRatio: 1,
+        cacheBust: true,
+      });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `instagram-${igPreview.title.replace(/[^a-zA-Z0-9]/g, "_")}.png`;
+      a.click();
+    } catch {
+      toast.error("Error al generar imagen. Intentá de nuevo.");
     }
     setIgLoading(null);
   };
 
-  const handleIgDownload = () => {
-    if (!igPreview) return;
-    const a = document.createElement("a");
-    a.href = igPreview.url;
-    a.download = `instagram-${igPreview.property.title.replace(/[^a-zA-Z0-9]/g, "_")}.png`;
-    a.click();
-  };
-
-  const closeIgPreview = () => {
-    if (igPreview) URL.revokeObjectURL(igPreview.url);
-    setIgPreview(null);
-  };
+  const closeIgPreview = () => setIgPreview(null);
 
   const handleStartReel = async () => {
     if (!token || !reelTarget || !reelForm.agentName.trim() || !reelForm.agentPhone.trim()) return;
@@ -798,30 +802,96 @@ export default function PropertiesPage() {
       )}
 
       {/* Instagram Preview Modal */}
-      {igPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeIgPreview}>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-              <div className="flex items-center gap-2">
-                <Instagram className="h-5 w-5 text-pink-600" />
-                <h3 className="font-semibold text-gray-900 dark:text-white">Imagen para Instagram</h3>
+      <AnimatePresence>
+        {igPreview && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeIgPreview}
+          >
+            <motion.div
+              className="bg-gray-950 rounded-2xl shadow-2xl w-full max-w-[520px] mx-4 overflow-hidden border border-white/10"
+              initial={{ scale: 0.92, opacity: 0, y: 24 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.94, opacity: 0, y: 12 }}
+              transition={{ type: "spring", damping: 22, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <Instagram className="h-5 w-5 text-pink-500" />
+                  <span className="font-semibold text-white text-sm">Imagen para Instagram</span>
+                  <span className="text-xs text-white/40 ml-1">1080 × 1080</span>
+                </div>
+                <button onClick={closeIgPreview} className="text-white/40 hover:text-white/80 transition-colors">
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <button onClick={closeIgPreview} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-            </div>
-            <div className="p-4">
-              <img src={igPreview.url} alt="Instagram preview" className="w-full rounded-lg shadow-md" />
-            </div>
-            <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
-              <button onClick={closeIgPreview} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                Cerrar
-              </button>
-              <button onClick={handleIgDownload} className="flex items-center gap-2 px-4 py-2 text-sm bg-pink-600 hover:bg-pink-700 text-white rounded-lg">
-                <Download className="h-4 w-4" /> Descargar imagen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
+              {/* Card preview — renders at 1080×1080, scaled to 480px for display */}
+              <div className="px-4 pb-2">
+                <motion.div
+                  className="rounded-xl overflow-hidden shadow-2xl mx-auto"
+                  style={{ width: 480, height: 480, position: "relative" }}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1, duration: 0.4 }}
+                >
+                  {/* Scale 1080→480 (≈0.4444) */}
+                  <div
+                    style={{
+                      transform: `scale(${480 / 1080})`,
+                      transformOrigin: "top left",
+                      width: 1080,
+                      height: 1080,
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                    }}
+                  >
+                    <InstagramPostCard ref={igCardRef} property={igPreview} />
+                  </div>
+
+                  {/* Reveal curtain that fades out */}
+                  <motion.div
+                    className="absolute inset-0 pointer-events-none rounded-xl"
+                    initial={{ opacity: 1 }}
+                    animate={{ opacity: 0 }}
+                    transition={{ delay: 0.5, duration: 0.6 }}
+                    style={{ background: "rgba(0,0,0,0.5)" }}
+                  />
+                </motion.div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between px-5 py-4 border-t border-white/10">
+                <p className="text-xs text-white/35">{igPreview.title}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={closeIgPreview}
+                    className="px-4 py-2 text-sm text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    onClick={handleIgDownload}
+                    disabled={igLoading === "download"}
+                    className="flex items-center gap-2 px-4 py-2 text-sm bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-lg font-medium transition-all disabled:opacity-60"
+                  >
+                    {igLoading === "download"
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Download className="h-4 w-4" />}
+                    Descargar PNG
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Reel Video Form Modal */}
       {reelTarget && (
