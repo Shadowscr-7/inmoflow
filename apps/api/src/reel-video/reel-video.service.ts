@@ -241,12 +241,7 @@ export class ReelVideoService {
 
       job.progress = 15;
 
-      // 2. Generate ambient background music (WAV as base64 data URL)
-      const musicDataUrl = await this.ttsService.generateAmbientMusic(
-        this.outputDir,
-        job.id,
-        Math.min(totalSec, 35), // generate up to 35s loop, Remotion will loop it
-      );
+      const musicDataUrl: string | null = null;
 
       job.progress = 22;
 

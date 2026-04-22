@@ -665,10 +665,6 @@ export const PropertyReelV2: React.FC<PropertyReelV2Props> = (props) => {
         <Audio src={props.audioDataUrl} volume={1} />
       )}
 
-      {/* Ambient background music — base64 data URL, low volume, looped */}
-      {props.musicDataUrl && (
-        <Audio src={props.musicDataUrl} volume={0.18} loop />
-      )}
 
       {/* Photo slides */}
       {effectivePhotos.map((photo, i) => (
