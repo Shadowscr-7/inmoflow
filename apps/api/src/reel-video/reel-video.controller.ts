@@ -6,15 +6,12 @@ import {
   Body,
   UseGuards,
   Res,
-  NotFoundException,
 } from "@nestjs/common";
 import { Response } from "express";
 import { ReelVideoService } from "./reel-video.service";
 import { JwtAuthGuard, TenantGuard, RolesGuard, Roles, TenantId } from "../auth";
 import { UserRole } from "@inmoflow/db";
 import * as fs from "fs";
-
-/* ─── Authenticated endpoints (tenants) ─────────────────── */
 
 @Controller("reel-video")
 @UseGuards(JwtAuthGuard, TenantGuard)
@@ -66,22 +63,5 @@ export class ReelVideoController {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename="reel-${jobId}.mp4"`);
     fs.createReadStream(filePath).pipe(res);
-  }
-}
-
-/* ─── Internal endpoint for Remotion renderer (no auth) ─── */
-
-@Controller("reel-video-internal")
-export class ReelVideoInternalController {
-  constructor(private readonly reelVideoService: ReelVideoService) {}
-
-  /** Serve TTS audio for Remotion's Chromium renderer — no auth, unguessable jobId. */
-  @Get(":jobId/audio")
-  serveAudio(@Param("jobId") jobId: string, @Res() res: Response) {
-    const audioPath = this.reelVideoService.getAudioPath(jobId);
-    if (!audioPath) throw new NotFoundException("Audio not found");
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Cache-Control", "no-cache");
-    fs.createReadStream(audioPath).pipe(res);
   }
 }

@@ -29,20 +29,29 @@ export interface PropertyReelV2Props {
   hasGarage: boolean | null;
   agentName: string;
   agentPhone: string;
-  audioUrl: string | null;
+  /** TTS narration as base64 data URL (data:audio/mpeg;base64,...) */
+  audioDataUrl: string | null;
+  /** Ambient background music as base64 data URL (data:audio/wav;base64,...) */
+  musicDataUrl: string | null;
   subtitleChunks: SubtitleChunk[];
   voiceGender: "female" | "male";
 }
 
-/* ─── Constants ──────────────────────────────────────────── */
+/* ─── Duration formula (must match reel-video.service.ts) ── */
 
-const SLIDE_DUR = 120; // 4s at 30fps
-const TRANS = 18;      // 0.6s overlap transition
-const CONTACT_DUR = 120; // 4s contact screen
+const MAX_PHOTOS = 10;
+const TRANS = 18;        // frames — 0.6s transition overlap
+const CONTACT_DUR = 120; // frames — 4s contact screen
+
+function calcSlideDur(photoCount: number, fps: number): number {
+  const effective = Math.min(photoCount, MAX_PHOTOS);
+  const targetSec = Math.min(Math.max(10 + effective * 5, 30), 55);
+  return Math.round((targetSec * fps - CONTACT_DUR - TRANS) / effective);
+}
 
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
 
-/* ─── Transition definitions (5 unique types) ────────────── */
+/* ─── 5 unique transition styles ────────────────────────── */
 
 type TransitionStyle = {
   entering: (p: number) => React.CSSProperties;
@@ -66,7 +75,7 @@ const TRANSITIONS: TransitionStyle[] = [
       opacity: 1 - p,
     }),
   },
-  // 2: Zoom dissolve (zoom in entering)
+  // 2: Zoom dissolve
   {
     entering: (p) => ({
       transform: `scale(${1.15 - p * 0.15})`,
@@ -142,28 +151,33 @@ const PhotoSlide: React.FC<{
   );
 };
 
-/* ─── TransitionSlide — applies entering/exiting animation ─ */
+/* ─── TransitionSlide ────────────────────────────────────── */
 
 const TransitionSlide: React.FC<{
   transitionIdx: number;
+  slideDur: number;
   children: React.ReactNode;
-}> = ({ transitionIdx, children }) => {
+}> = ({ transitionIdx, slideDur, children }) => {
   const frame = useCurrentFrame();
   const transition = TRANSITIONS[transitionIdx % TRANSITIONS.length];
 
   let style: React.CSSProperties = {};
 
   if (frame < TRANS) {
-    const p = smoothstep(interpolate(frame, [0, TRANS], [0, 1], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    }));
+    const p = smoothstep(
+      interpolate(frame, [0, TRANS], [0, 1], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      }),
+    );
     style = transition.entering(p);
-  } else if (frame >= SLIDE_DUR) {
-    const p = smoothstep(interpolate(frame, [SLIDE_DUR, SLIDE_DUR + TRANS], [0, 1], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    }));
+  } else if (frame >= slideDur) {
+    const p = smoothstep(
+      interpolate(frame, [slideDur, slideDur + TRANS], [0, 1], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      }),
+    );
     style = transition.exiting(p);
   }
 
@@ -191,7 +205,7 @@ const FadeInOut: React.FC<{
   return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
 };
 
-/* ─── AnimatedIn — slide-up + fade for text ─────────────── */
+/* ─── AnimatedIn — slide-up entry ────────────────────────── */
 
 const AnimatedIn: React.FC<{
   delay?: number;
@@ -206,7 +220,7 @@ const AnimatedIn: React.FC<{
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const scale = spring({
+  const scaleVal = spring({
     frame: Math.max(frame - start, 0),
     fps,
     config: { damping: 18, stiffness: 200, mass: 0.8 },
@@ -218,7 +232,7 @@ const AnimatedIn: React.FC<{
     <div
       style={{
         opacity,
-        transform: `scale(${scale})`,
+        transform: `scale(${scaleVal})`,
         transformOrigin: "left center",
         ...style,
       }}
@@ -238,7 +252,6 @@ const SlideOverlay: React.FC<{
   const frame = useCurrentFrame();
   const badge = props.operationType === "rent" ? "EN ALQUILER" : "EN VENTA";
 
-  // Animated top accent line
   const lineWidth = interpolate(frame, [TRANS, TRANS + 25], [0, 100], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -254,7 +267,7 @@ const SlideOverlay: React.FC<{
           padding: "0 56px 64px",
         }}
       >
-        {/* Top accent bar */}
+        {/* Animated top accent bar */}
         <div
           style={{
             position: "absolute",
@@ -272,7 +285,6 @@ const SlideOverlay: React.FC<{
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 10,
               background: accentColor,
               color: "white",
               padding: "10px 26px",
@@ -315,7 +327,7 @@ const SlideOverlay: React.FC<{
                 gap: 10,
               }}
             >
-              <span style={{ color: accentColor, fontSize: 32 }}>📍</span>
+              <span style={{ color: accentColor }}>📍</span>
               {props.address}
             </div>
           </AnimatedIn>
@@ -343,7 +355,7 @@ const SlideOverlay: React.FC<{
         <AnimatedIn delay={0}>
           <div
             style={{
-              color: "rgba(255,255,255,0.65)",
+              color: "rgba(255,255,255,0.6)",
               fontSize: 28,
               fontWeight: 600,
               letterSpacing: 4,
@@ -363,7 +375,7 @@ const SlideOverlay: React.FC<{
                 style={{
                   background: "rgba(255,255,255,0.12)",
                   backdropFilter: "blur(12px)",
-                  border: `1px solid rgba(255,255,255,0.22)`,
+                  border: "1px solid rgba(255,255,255,0.22)",
                   borderRadius: 16,
                   padding: "14px 26px",
                   display: "flex",
@@ -384,7 +396,7 @@ const SlideOverlay: React.FC<{
     );
   }
 
-  // Other slides: subtle scrim + corner badge
+  // Other slides: subtle gradient scrim
   return (
     <AbsoluteFill>
       <div
@@ -397,28 +409,11 @@ const SlideOverlay: React.FC<{
           background: "linear-gradient(to top, rgba(0,0,0,0.35) 0%, transparent 100%)",
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          top: 32,
-          left: 32,
-          background: "rgba(0,0,0,0.45)",
-          backdropFilter: "blur(8px)",
-          borderRadius: 12,
-          padding: "8px 18px",
-          color: "rgba(255,255,255,0.75)",
-          fontSize: 24,
-          fontWeight: 600,
-          border: "1px solid rgba(255,255,255,0.15)",
-        }}
-      >
-        {slideIndex + 1} / {Math.max(1, 1)} {/* placeholder count */}
-      </div>
     </AbsoluteFill>
   );
 };
 
-/* ─── Subtitle display (global frame) ───────────────────── */
+/* ─── Subtitle display (global frame context) ────────────── */
 
 const SubtitleDisplay: React.FC<{
   chunks: SubtitleChunk[];
@@ -444,7 +439,7 @@ const SubtitleDisplay: React.FC<{
     extrapolateRight: "clamp",
   });
 
-  const scale = spring({
+  const scaleVal = spring({
     frame: localFrame,
     fps,
     config: { damping: 20, stiffness: 280, mass: 0.7 },
@@ -463,14 +458,14 @@ const SubtitleDisplay: React.FC<{
     >
       <div
         style={{
-          background: "rgba(0, 0, 0, 0.72)",
+          background: "rgba(0,0,0,0.72)",
           backdropFilter: "blur(10px)",
           borderRadius: 18,
           padding: "18px 32px",
           maxWidth: "88%",
           textAlign: "center",
           opacity,
-          transform: `scale(${scale})`,
+          transform: `scale(${scaleVal})`,
           border: "1px solid rgba(255,255,255,0.12)",
         }}
       >
@@ -532,7 +527,7 @@ const ContactScreen: React.FC<{
         padding: 80,
       }}
     >
-      {/* Decorative radial glow */}
+      {/* Radial glow */}
       <div
         style={{
           position: "absolute",
@@ -630,7 +625,6 @@ const ContactScreen: React.FC<{
         </div>
       </div>
 
-      {/* Bottom watermark */}
       <div
         style={{
           position: "absolute",
@@ -652,24 +646,38 @@ const ContactScreen: React.FC<{
 export const PropertyReelV2: React.FC<PropertyReelV2Props> = (props) => {
   const { fps } = useVideoConfig();
 
-  const photos = props.photos.length > 0 ? props.photos : [];
-  const photoCount = Math.max(photos.length, 1);
+  // Use at most MAX_PHOTOS images
+  const effectivePhotos = props.photos.slice(0, MAX_PHOTOS);
+  const photoCount = Math.max(effectivePhotos.length, 1);
+  const SLIDE_DUR = calcSlideDur(photoCount, fps);
+  const contentEndFrame = photoCount * SLIDE_DUR;
   const accentColor = props.operationType === "rent" ? "#3b82f6" : "#22c55e";
-  const contentEndFrame = photoCount * SLIDE_DUR; // subtitles only during photos
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#111", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      {/* TTS audio */}
-      {props.audioUrl && <Audio src={props.audioUrl} volume={1} />}
+    <AbsoluteFill
+      style={{
+        backgroundColor: "#111",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+      }}
+    >
+      {/* TTS narration — base64 data URL, full volume */}
+      {props.audioDataUrl && (
+        <Audio src={props.audioDataUrl} volume={1} />
+      )}
+
+      {/* Ambient background music — base64 data URL, low volume, looped */}
+      {props.musicDataUrl && (
+        <Audio src={props.musicDataUrl} volume={0.18} loop />
+      )}
 
       {/* Photo slides */}
-      {photos.map((photo, i) => (
+      {effectivePhotos.map((photo, i) => (
         <Sequence
           key={i}
           from={i * SLIDE_DUR}
           durationInFrames={SLIDE_DUR + TRANS}
         >
-          <TransitionSlide transitionIdx={i}>
+          <TransitionSlide transitionIdx={i} slideDur={SLIDE_DUR}>
             <PhotoSlide
               src={photo}
               durationInFrames={SLIDE_DUR + TRANS}
@@ -686,7 +694,7 @@ export const PropertyReelV2: React.FC<PropertyReelV2Props> = (props) => {
 
       {/* Contact screen */}
       <Sequence
-        from={photoCount * SLIDE_DUR}
+        from={contentEndFrame}
         durationInFrames={CONTACT_DUR}
       >
         <FadeInOut durationInFrames={CONTACT_DUR} fadeFrames={TRANS}>
@@ -698,7 +706,7 @@ export const PropertyReelV2: React.FC<PropertyReelV2Props> = (props) => {
         </FadeInOut>
       </Sequence>
 
-      {/* Subtitles — outside sequences to use global frame */}
+      {/* Subtitles — outside Sequences to access global frame */}
       {props.subtitleChunks.length > 0 && (
         <SubtitleDisplay
           chunks={props.subtitleChunks}

@@ -17,7 +17,6 @@ export interface ReelJob {
   status: "pending" | "bundling" | "rendering" | "done" | "error";
   progress: number;
   outputPath: string | null;
-  audioPath: string | null;
   error: string | null;
   createdAt: number;
 }
@@ -26,6 +25,18 @@ interface StartReelInput {
   agentName: string;
   agentPhone: string;
   voiceGender: "female" | "male";
+}
+
+/* ─── Duration constants (must match PropertyReelV2.tsx) ─── */
+const MAX_PHOTOS = 10;
+const FPS = 30;
+const TRANS = 18;      // 0.6s transition overlap
+const CONTACT_DUR = 120; // 4s contact screen
+
+function calcSlideDur(photoCount: number): number {
+  const effective = Math.min(photoCount, MAX_PHOTOS);
+  const targetSec = Math.min(Math.max(10 + effective * 5, 30), 55);
+  return Math.round((targetSec * FPS - CONTACT_DUR - TRANS) / effective);
 }
 
 @Injectable()
@@ -56,12 +67,6 @@ export class ReelVideoService {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  getAudioPath(jobId: string): string | null {
-    const job = this.jobs.get(jobId);
-    if (!job?.audioPath) return null;
-    return fs.existsSync(job.audioPath) ? job.audioPath : null;
-  }
-
   async startReel(
     tenantId: string,
     propertyId: string,
@@ -78,7 +83,6 @@ export class ReelVideoService {
       status: "pending",
       progress: 0,
       outputPath: null,
-      audioPath: null,
       error: null,
       createdAt: Date.now(),
     };
@@ -86,17 +90,20 @@ export class ReelVideoService {
 
     const apiPort = process.env.API_PORT ?? "4000";
 
-    // Build HTTP-accessible image URLs for Remotion's Chromium
-    const photoUrls: string[] = [];
+    // HTTP-accessible image URLs for Remotion's Chromium (for photos only)
+    const allPhotoUrls: string[] = [];
     if (property.media) {
       for (const m of property.media.filter((x) => x.kind === "image")) {
         if (m.url.startsWith("http://") || m.url.startsWith("https://")) {
-          photoUrls.push(m.url);
+          allPhotoUrls.push(m.url);
         } else if (m.url.startsWith("/api/uploads/")) {
-          photoUrls.push(`http://localhost:${apiPort}${m.url}`);
+          allPhotoUrls.push(`http://localhost:${apiPort}${m.url}`);
         }
       }
     }
+
+    // Limit photos to MAX_PHOTOS
+    const photos = allPhotoUrls.slice(0, MAX_PHOTOS);
 
     const priceStr = property.price
       ? `${property.currency ?? "USD"} ${property.price.toLocaleString("es")}`
@@ -105,7 +112,7 @@ export class ReelVideoService {
     const narrationScript = this.buildNarrationScript(property);
 
     const baseInputProps = {
-      photos: photoUrls,
+      photos,
       price: priceStr,
       address: property.address ?? property.zone ?? "",
       operationType: (property.operationType ?? "sale") as "sale" | "rent",
@@ -116,11 +123,12 @@ export class ReelVideoService {
       agentName: input.agentName,
       agentPhone: input.agentPhone,
       voiceGender: input.voiceGender,
-      audioUrl: null as string | null,
+      audioDataUrl: null as string | null,
+      musicDataUrl: null as string | null,
       subtitleChunks: [] as SubtitleChunk[],
     };
 
-    this.renderInBackground(job, baseInputProps, narrationScript, apiPort).catch((err) => {
+    this.renderInBackground(job, baseInputProps, narrationScript).catch((err) => {
       this.logger.error(`Reel render failed for job ${jobId}`, err);
     });
 
@@ -140,7 +148,6 @@ export class ReelVideoService {
     hasGarage?: boolean | null;
     price?: number | null;
     currency?: string | null;
-    amenities?: string | null;
   }): string {
     const parts: string[] = [];
     const opType = property.operationType === "rent" ? "alquiler" : "venta";
@@ -201,13 +208,22 @@ export class ReelVideoService {
     job: ReelJob,
     baseInputProps: Record<string, unknown>,
     narrationScript: string,
-    apiPort: string,
   ): Promise<void> {
     try {
       job.status = "bundling";
       job.progress = 3;
 
-      // 1. Generate TTS audio (non-blocking failure)
+      const photos = baseInputProps.photos as string[];
+      const photoCount = Math.max(photos.length, 1);
+      const slideDur = calcSlideDur(photoCount);
+      const totalDuration = photoCount * slideDur + TRANS + CONTACT_DUR;
+      const totalSec = Math.round(totalDuration / FPS);
+
+      this.logger.log(
+        `Reel job ${job.id}: ${photoCount} photos, slideDur=${slideDur}f, total=${totalSec}s`,
+      );
+
+      // 1. Generate TTS (audio as base64 data URL — avoids HTTP dependency)
       const ttsResult = await this.ttsService.generate(
         narrationScript,
         (baseInputProps.voiceGender as "female" | "male") ?? "female",
@@ -215,18 +231,26 @@ export class ReelVideoService {
         job.id,
       );
 
-      let audioUrl: string | null = null;
+      let audioDataUrl: string | null = null;
       let subtitleChunks: SubtitleChunk[] = [];
 
       if (ttsResult) {
-        job.audioPath = ttsResult.audioPath;
-        audioUrl = `http://localhost:${apiPort}/api/reel-video-internal/${job.id}/audio`;
+        audioDataUrl = ttsResult.audioDataUrl;
         subtitleChunks = ttsResult.subtitleChunks;
       }
 
       job.progress = 15;
 
-      // Dynamic imports to avoid loading Remotion at startup
+      // 2. Generate ambient background music (WAV as base64 data URL)
+      const musicDataUrl = await this.ttsService.generateAmbientMusic(
+        this.outputDir,
+        job.id,
+        Math.min(totalSec, 35), // generate up to 35s loop, Remotion will loop it
+      );
+
+      job.progress = 22;
+
+      // 3. Bundle Remotion
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { bundle } = require("@remotion/bundler");
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -237,29 +261,22 @@ export class ReelVideoService {
         process.env.CHROME_PATH ||
         undefined;
 
-      const photos = baseInputProps.photos as string[];
       const entryPoint = path.resolve(process.cwd(), "../../video/src/index.ts");
 
       const bundleLocation = await bundle({
         entryPoint,
         onProgress: (progress: number) => {
-          job.progress = 15 + Math.round((progress / 100) * 20); // 15–35%
+          job.progress = 22 + Math.round((progress / 100) * 18); // 22–40%
         },
       });
 
       job.status = "rendering";
-      job.progress = 35;
-
-      const fps = 30;
-      const SLIDE_DUR = 120; // 4s per slide
-      const TRANS = 18;      // 0.6s overlap transition
-      const CONTACT_DUR = 120; // 4s contact screen
-      const photoCount = Math.max(photos.length, 1);
-      const totalDuration = photoCount * SLIDE_DUR + TRANS + CONTACT_DUR;
+      job.progress = 40;
 
       const inputProps = {
         ...baseInputProps,
-        audioUrl,
+        audioDataUrl,
+        musicDataUrl,
         subtitleChunks,
       };
 
@@ -274,7 +291,7 @@ export class ReelVideoService {
       });
 
       composition.durationInFrames = totalDuration;
-      composition.fps = fps;
+      composition.fps = FPS;
 
       const outputPath = path.join(this.outputDir, `reel_${job.id}.mp4`);
 
@@ -289,7 +306,7 @@ export class ReelVideoService {
           args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
         },
         onProgress: ({ progress }: { progress: number }) => {
-          job.progress = 35 + Math.round(progress * 65); // 35–100%
+          job.progress = 40 + Math.round(progress * 60); // 40–100%
         },
       });
 
@@ -297,7 +314,7 @@ export class ReelVideoService {
       job.progress = 100;
       job.outputPath = outputPath;
 
-      this.logger.log(`Reel rendered: ${outputPath}`);
+      this.logger.log(`Reel rendered OK: ${outputPath}`);
     } catch (err: unknown) {
       job.status = "error";
       job.error = err instanceof Error ? err.message : "Unknown error";

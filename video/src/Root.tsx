@@ -34,7 +34,7 @@ export const RemotionRoot: React.FC = () => {
         } satisfies PropertyReelProps}
       />
 
-      {/* V2 — TTS + subtitles + diverse transitions */}
+      {/* V2 — TTS + subtítulos + transiciones únicas + música ambient */}
       <Composition
         id="PropertyReelV2"
         component={V2}
@@ -53,7 +53,8 @@ export const RemotionRoot: React.FC = () => {
           hasGarage: false,
           agentName: "Agente",
           agentPhone: "+598 99 123 456",
-          audioUrl: null,
+          audioDataUrl: null,
+          musicDataUrl: null,
           subtitleChunks: [],
           voiceGender: "female" as const,
         } satisfies PropertyReelV2Props}
