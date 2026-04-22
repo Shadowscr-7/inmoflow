@@ -37,17 +37,9 @@ export interface PropertyReelV2Props {
   voiceGender: "female" | "male";
 }
 
-/* ─── Duration formula (must match reel-video.service.ts) ── */
-
 const MAX_PHOTOS = 10;
 const TRANS = 18;        // frames — 0.6s transition overlap
 const CONTACT_DUR = 120; // frames — 4s contact screen
-
-function calcSlideDur(photoCount: number, fps: number): number {
-  const effective = Math.min(photoCount, MAX_PHOTOS);
-  const targetSec = Math.min(Math.max(10 + effective * 5, 30), 55);
-  return Math.round((targetSec * fps - CONTACT_DUR - TRANS) / effective);
-}
 
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
 
@@ -413,12 +405,13 @@ const SlideOverlay: React.FC<{
   );
 };
 
-/* ─── Subtitle display (global frame context) ────────────── */
+/* ─── Subtitle display — word by word ───────────────────── */
 
 const SubtitleDisplay: React.FC<{
   chunks: SubtitleChunk[];
   contentEndFrame: number;
-}> = ({ chunks, contentEndFrame }) => {
+  accentColor: string;
+}> = ({ chunks, contentEndFrame, accentColor }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -426,57 +419,63 @@ const SubtitleDisplay: React.FC<{
 
   const currentMs = (frame / fps) * 1000;
   const activeChunk = chunks.find(
-    (c) => currentMs >= c.startMs && currentMs < c.endMs + 350,
+    (c) => currentMs >= c.startMs && currentMs < c.endMs + 120,
   );
 
   if (!activeChunk) return null;
 
   const chunkStartFrame = Math.round((activeChunk.startMs / 1000) * fps);
+  const chunkEndFrame = Math.round((activeChunk.endMs / 1000) * fps);
   const localFrame = Math.max(frame - chunkStartFrame, 0);
 
-  const opacity = interpolate(localFrame, [0, 6], [0, 1], {
+  // Bouncy pop-in per word
+  const scaleVal = spring({
+    frame: localFrame,
+    fps,
+    config: { damping: 9, stiffness: 480, mass: 0.35 },
+    from: 0.45,
+    to: 1,
+  });
+
+  const fadeIn = interpolate(localFrame, [0, 3], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
 
-  const scaleVal = spring({
-    frame: localFrame,
-    fps,
-    config: { damping: 20, stiffness: 280, mass: 0.7 },
-    from: 0.88,
-    to: 1,
+  const fadeOut = interpolate(frame, [chunkEndFrame - 2, chunkEndFrame + 3], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
   });
 
+  const opacity = Math.min(fadeIn, fadeOut);
+
   return (
-    <AbsoluteFill
-      style={{
-        justifyContent: "flex-end",
-        alignItems: "center",
-        padding: "0 40px 200px",
-        pointerEvents: "none",
-      }}
-    >
+    <AbsoluteFill style={{ pointerEvents: "none" }}>
       <div
         style={{
-          background: "rgba(0,0,0,0.72)",
-          backdropFilter: "blur(10px)",
-          borderRadius: 18,
-          padding: "18px 32px",
-          maxWidth: "88%",
+          position: "absolute",
+          left: 60,
+          right: 60,
+          bottom: 440,
           textAlign: "center",
           opacity,
           transform: `scale(${scaleVal})`,
-          border: "1px solid rgba(255,255,255,0.12)",
         }}
       >
         <span
           style={{
+            display: "inline-block",
+            background: "rgba(0,0,0,0.52)",
+            backdropFilter: "blur(6px)",
+            borderRadius: 14,
+            padding: "10px 30px",
             color: "white",
-            fontSize: 46,
-            fontWeight: 700,
-            lineHeight: 1.25,
-            textShadow: "0 2px 12px rgba(0,0,0,0.6)",
-            letterSpacing: 0.3,
+            fontSize: 62,
+            fontWeight: 800,
+            lineHeight: 1.1,
+            textShadow: `0 2px 16px rgba(0,0,0,0.9)`,
+            letterSpacing: -0.5,
+            borderBottom: `3px solid ${accentColor}`,
           }}
         >
           {activeChunk.text}
@@ -644,13 +643,14 @@ const ContactScreen: React.FC<{
 /* ─── Main composition ───────────────────────────────────── */
 
 export const PropertyReelV2: React.FC<PropertyReelV2Props> = (props) => {
-  const { fps } = useVideoConfig();
+  const { durationInFrames } = useVideoConfig();
 
   // Use at most MAX_PHOTOS images
   const effectivePhotos = props.photos.slice(0, MAX_PHOTOS);
   const photoCount = Math.max(effectivePhotos.length, 1);
-  const SLIDE_DUR = calcSlideDur(photoCount, fps);
-  const contentEndFrame = photoCount * SLIDE_DUR;
+  // Distribute all non-contact frames equally across photos
+  const contentEndFrame = durationInFrames - CONTACT_DUR;
+  const SLIDE_DUR = Math.ceil(contentEndFrame / photoCount);
   const accentColor = props.operationType === "rent" ? "#3b82f6" : "#22c55e";
 
   return (
@@ -707,6 +707,7 @@ export const PropertyReelV2: React.FC<PropertyReelV2Props> = (props) => {
         <SubtitleDisplay
           chunks={props.subtitleChunks}
           contentEndFrame={contentEndFrame}
+          accentColor={accentColor}
         />
       )}
     </AbsoluteFill>

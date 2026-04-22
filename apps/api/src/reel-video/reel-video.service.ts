@@ -30,13 +30,14 @@ interface StartReelInput {
 /* ─── Duration constants (must match PropertyReelV2.tsx) ─── */
 const MAX_PHOTOS = 10;
 const FPS = 30;
-const TRANS = 18;      // 0.6s transition overlap
 const CONTACT_DUR = 120; // 4s contact screen
+const MIN_SLIDE_SEC = 2; // minimum 2s per photo slide
 
-function calcSlideDur(photoCount: number): number {
+function calcPhotoDuration(photoCount: number, voiceMs: number): number {
   const effective = Math.min(photoCount, MAX_PHOTOS);
-  const targetSec = Math.min(Math.max(10 + effective * 5, 30), 55);
-  return Math.round((targetSec * FPS - CONTACT_DUR - TRANS) / effective);
+  const voiceFrames = voiceMs > 0 ? Math.ceil((voiceMs / 1000) * FPS) + FPS : 0;
+  const minFrames = effective * MIN_SLIDE_SEC * FPS;
+  return Math.max(voiceFrames, minFrames);
 }
 
 @Injectable()
@@ -215,15 +216,8 @@ export class ReelVideoService {
 
       const photos = baseInputProps.photos as string[];
       const photoCount = Math.max(photos.length, 1);
-      const slideDur = calcSlideDur(photoCount);
-      const totalDuration = photoCount * slideDur + TRANS + CONTACT_DUR;
-      const totalSec = Math.round(totalDuration / FPS);
 
-      this.logger.log(
-        `Reel job ${job.id}: ${photoCount} photos, slideDur=${slideDur}f, total=${totalSec}s`,
-      );
-
-      // 1. Generate TTS (audio as base64 data URL — avoids HTTP dependency)
+      // 1. Generate TTS first so we can use its duration for video length
       const ttsResult = await this.ttsService.generate(
         narrationScript,
         (baseInputProps.voiceGender as "female" | "male") ?? "female",
@@ -233,11 +227,20 @@ export class ReelVideoService {
 
       let audioDataUrl: string | null = null;
       let subtitleChunks: SubtitleChunk[] = [];
+      const voiceMs = ttsResult?.totalMs ?? 0;
 
       if (ttsResult) {
         audioDataUrl = ttsResult.audioDataUrl;
         subtitleChunks = ttsResult.subtitleChunks;
       }
+
+      const photoFrames = calcPhotoDuration(photoCount, voiceMs);
+      const totalDuration = photoFrames + CONTACT_DUR;
+      const totalSec = Math.round(totalDuration / FPS);
+
+      this.logger.log(
+        `Reel job ${job.id}: ${photoCount} photos, voiceMs=${voiceMs}, photoFrames=${photoFrames}, total=${totalSec}s`,
+      );
 
       job.progress = 15;
 
