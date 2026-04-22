@@ -1,5 +1,10 @@
-import { Injectable, Logger, NotFoundException, InternalServerErrorException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { PropertiesService } from "../properties/properties.service";
+import { TtsService, SubtitleChunk } from "./tts.service";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -12,6 +17,7 @@ export interface ReelJob {
   status: "pending" | "bundling" | "rendering" | "done" | "error";
   progress: number;
   outputPath: string | null;
+  audioPath: string | null;
   error: string | null;
   createdAt: number;
 }
@@ -19,7 +25,7 @@ export interface ReelJob {
 interface StartReelInput {
   agentName: string;
   agentPhone: string;
-  musicUrl?: string;
+  voiceGender: "female" | "male";
 }
 
 @Injectable()
@@ -29,7 +35,10 @@ export class ReelVideoService {
   private readonly outputDir: string;
   private readonly jobs = new Map<string, ReelJob>();
 
-  constructor(private readonly propertiesService: PropertiesService) {
+  constructor(
+    private readonly propertiesService: PropertiesService,
+    private readonly ttsService: TtsService,
+  ) {
     this.uploadDir = process.env.UPLOAD_DIR ?? path.resolve(process.cwd(), "uploads");
     this.outputDir = path.join(this.uploadDir, "_reels");
     if (!fs.existsSync(this.outputDir)) {
@@ -47,7 +56,17 @@ export class ReelVideoService {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  async startReel(tenantId: string, propertyId: string, input: StartReelInput): Promise<ReelJob> {
+  getAudioPath(jobId: string): string | null {
+    const job = this.jobs.get(jobId);
+    if (!job?.audioPath) return null;
+    return fs.existsSync(job.audioPath) ? job.audioPath : null;
+  }
+
+  async startReel(
+    tenantId: string,
+    propertyId: string,
+    input: StartReelInput,
+  ): Promise<ReelJob> {
     const property = await this.propertiesService.findOne(tenantId, propertyId);
 
     const jobId = crypto.randomBytes(8).toString("hex");
@@ -59,60 +78,153 @@ export class ReelVideoService {
       status: "pending",
       progress: 0,
       outputPath: null,
+      audioPath: null,
       error: null,
       createdAt: Date.now(),
     };
     this.jobs.set(jobId, job);
 
-    // Collect HTTP-accessible image URLs for Remotion's browser
     const apiPort = process.env.API_PORT ?? "4000";
+
+    // Build HTTP-accessible image URLs for Remotion's Chromium
     const photoUrls: string[] = [];
     if (property.media) {
       for (const m of property.media.filter((x) => x.kind === "image")) {
         if (m.url.startsWith("http://") || m.url.startsWith("https://")) {
-          // External URL (e.g. MercadoLibre) — use directly
           photoUrls.push(m.url);
         } else if (m.url.startsWith("/api/uploads/")) {
-          // Local upload — make it HTTP accessible via the API
           photoUrls.push(`http://localhost:${apiPort}${m.url}`);
         }
       }
     }
 
-    // Format price
     const priceStr = property.price
       ? `${property.currency ?? "USD"} ${property.price.toLocaleString("es")}`
       : "Consultar";
 
-    // Build input props for Remotion
-    const inputProps = {
-      photos: photoUrls, // HTTP URLs accessible by Chromium
+    const narrationScript = this.buildNarrationScript(property);
+
+    const baseInputProps = {
+      photos: photoUrls,
       price: priceStr,
       address: property.address ?? property.zone ?? "",
       operationType: (property.operationType ?? "sale") as "sale" | "rent",
       bedrooms: property.bedrooms,
       bathrooms: property.bathrooms,
       areaM2: property.areaM2,
+      hasGarage: property.hasGarage ?? false,
       agentName: input.agentName,
       agentPhone: input.agentPhone,
-      musicUrl: input.musicUrl ?? null,
+      voiceGender: input.voiceGender,
+      audioUrl: null as string | null,
+      subtitleChunks: [] as SubtitleChunk[],
     };
 
-    // Run rendering in background (non-blocking)
-    this.renderInBackground(job, inputProps).catch((err) => {
+    this.renderInBackground(job, baseInputProps, narrationScript, apiPort).catch((err) => {
       this.logger.error(`Reel render failed for job ${jobId}`, err);
     });
 
     return job;
   }
 
+  private buildNarrationScript(property: {
+    title: string;
+    description?: string | null;
+    operationType?: string | null;
+    propertyType?: string | null;
+    address?: string | null;
+    zone?: string | null;
+    bedrooms?: number | null;
+    bathrooms?: number | null;
+    areaM2?: number | null;
+    hasGarage?: boolean | null;
+    price?: number | null;
+    currency?: string | null;
+    amenities?: string | null;
+  }): string {
+    const parts: string[] = [];
+    const opType = property.operationType === "rent" ? "alquiler" : "venta";
+    const location = property.address ?? property.zone ?? "";
+
+    parts.push(`¡Oportunidad de ${opType}!`);
+
+    if (property.description && property.description.trim().length > 20) {
+      let desc = property.description.replace(/\n+/g, ". ").replace(/\s+/g, " ").trim();
+      if (desc.length > 400) {
+        desc = desc.slice(0, 400);
+        const lastSpace = desc.lastIndexOf(" ");
+        if (lastSpace > 200) desc = desc.slice(0, lastSpace);
+        if (!desc.endsWith(".")) desc += ".";
+      }
+      parts.push(desc);
+    } else {
+      const typeStr = property.propertyType ?? "Propiedad";
+      parts.push(`${typeStr}${location ? ` en ${location}` : ""}.`);
+    }
+
+    const features: string[] = [];
+    if (property.bedrooms) {
+      features.push(`${property.bedrooms} dormitorio${property.bedrooms !== 1 ? "s" : ""}`);
+    }
+    if (property.bathrooms) {
+      features.push(`${property.bathrooms} baño${property.bathrooms !== 1 ? "s" : ""}`);
+    }
+    if (property.areaM2) {
+      features.push(`${property.areaM2} metros cuadrados`);
+    }
+    if (property.hasGarage) {
+      features.push("garage incluido");
+    }
+
+    if (features.length > 0) {
+      if (features.length === 1) {
+        parts.push(`Cuenta con ${features[0]}.`);
+      } else {
+        const last = features.pop()!;
+        parts.push(`Cuenta con ${features.join(", ")} y ${last}.`);
+      }
+    }
+
+    if (property.price) {
+      const priceStr = property.price.toLocaleString("es");
+      parts.push(`Precio: ${property.currency ?? "USD"} ${priceStr}.`);
+    } else {
+      parts.push("Precio a consultar.");
+    }
+
+    parts.push("¡Contactanos para más información y no te pierdas esta oportunidad única!");
+
+    return parts.join(" ");
+  }
+
   private async renderInBackground(
     job: ReelJob,
-    inputProps: Record<string, unknown>,
+    baseInputProps: Record<string, unknown>,
+    narrationScript: string,
+    apiPort: string,
   ): Promise<void> {
     try {
       job.status = "bundling";
-      job.progress = 5;
+      job.progress = 3;
+
+      // 1. Generate TTS audio (non-blocking failure)
+      const ttsResult = await this.ttsService.generate(
+        narrationScript,
+        (baseInputProps.voiceGender as "female" | "male") ?? "female",
+        this.outputDir,
+        job.id,
+      );
+
+      let audioUrl: string | null = null;
+      let subtitleChunks: SubtitleChunk[] = [];
+
+      if (ttsResult) {
+        job.audioPath = ttsResult.audioPath;
+        audioUrl = `http://localhost:${apiPort}/api/reel-video-internal/${job.id}/audio`;
+        subtitleChunks = ttsResult.subtitleChunks;
+      }
+
+      job.progress = 15;
 
       // Dynamic imports to avoid loading Remotion at startup
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -120,44 +232,49 @@ export class ReelVideoService {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { renderMedia, selectComposition } = require("@remotion/renderer");
 
-      // Use system Chromium on Alpine Linux
       const browserExecutable =
         process.env.REMOTION_CHROME_EXECUTABLE ||
         process.env.CHROME_PATH ||
         undefined;
 
-      // Photos are already HTTP URLs, use directly
-      const photos = inputProps.photos as string[];
-
+      const photos = baseInputProps.photos as string[];
       const entryPoint = path.resolve(process.cwd(), "../../video/src/index.ts");
-      job.progress = 10;
 
       const bundleLocation = await bundle({
         entryPoint,
         onProgress: (progress: number) => {
-          job.progress = 10 + Math.round((progress / 100) * 20); // 10-30%
+          job.progress = 15 + Math.round((progress / 100) * 20); // 15–35%
         },
       });
 
       job.status = "rendering";
-      job.progress = 30;
+      job.progress = 35;
 
       const fps = 30;
-      const photoDuration = Math.round(3.5 * fps);
-      const contactDuration = 4 * fps;
+      const SLIDE_DUR = 120; // 4s per slide
+      const TRANS = 18;      // 0.6s overlap transition
+      const CONTACT_DUR = 120; // 4s contact screen
       const photoCount = Math.max(photos.length, 1);
-      const totalDuration = photoCount * photoDuration + contactDuration;
+      const totalDuration = photoCount * SLIDE_DUR + TRANS + CONTACT_DUR;
+
+      const inputProps = {
+        ...baseInputProps,
+        audioUrl,
+        subtitleChunks,
+      };
 
       const composition = await selectComposition({
         serveUrl: bundleLocation,
-        id: "PropertyReel",
-        inputProps: { ...inputProps, photos },
+        id: "PropertyReelV2",
+        inputProps,
         browserExecutable,
-        chromiumOptions: { args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] },
+        chromiumOptions: {
+          args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+        },
       });
 
-      // Override duration based on actual photo count
       composition.durationInFrames = totalDuration;
+      composition.fps = fps;
 
       const outputPath = path.join(this.outputDir, `reel_${job.id}.mp4`);
 
@@ -166,11 +283,13 @@ export class ReelVideoService {
         serveUrl: bundleLocation,
         codec: "h264",
         outputLocation: outputPath,
-        inputProps: { ...inputProps, photos },
+        inputProps,
         browserExecutable,
-        chromiumOptions: { args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] },
+        chromiumOptions: {
+          args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+        },
         onProgress: ({ progress }: { progress: number }) => {
-          job.progress = 30 + Math.round(progress * 70); // 30-100%
+          job.progress = 35 + Math.round(progress * 65); // 35–100%
         },
       });
 
@@ -178,7 +297,7 @@ export class ReelVideoService {
       job.progress = 100;
       job.outputPath = outputPath;
 
-      this.logger.log(`Reel rendered successfully: ${outputPath}`);
+      this.logger.log(`Reel rendered: ${outputPath}`);
     } catch (err: unknown) {
       job.status = "error";
       job.error = err instanceof Error ? err.message : "Unknown error";

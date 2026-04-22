@@ -1249,7 +1249,7 @@ export const api = {
   },
 
   // ─── Reel Video ───────────────────────────────────
-  startReelVideo(token: string, propertyId: string, data: { agentName: string; agentPhone: string; musicUrl?: string }) {
+  startReelVideo(token: string, propertyId: string, data: { agentName: string; agentPhone: string; voiceGender?: "female" | "male" }) {
     return apiFetch<{ jobId: string; status: string }>(`/reel-video/${propertyId}`, {
       token, method: "POST", body: JSON.stringify(data),
     });

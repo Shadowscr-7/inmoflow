@@ -71,7 +71,7 @@ export default function PropertiesPage() {
   const [igPreview, setIgPreview] = useState<{ url: string; blob: Blob; property: Property } | null>(null);
   // Reel video generation
   const [reelTarget, setReelTarget] = useState<Property | null>(null);
-  const [reelForm, setReelForm] = useState({ agentName: "", agentPhone: "" });
+  const [reelForm, setReelForm] = useState({ agentName: "", agentPhone: "", voiceGender: "female" as "female" | "male" });
   const [reelStarting, setReelStarting] = useState(false);
 
   const load = useCallback(async () => {
@@ -259,10 +259,14 @@ export default function PropertiesPage() {
     if (!token || !reelTarget || !reelForm.agentName.trim() || !reelForm.agentPhone.trim()) return;
     setReelStarting(true);
     try {
-      await api.startReelVideo(token, reelTarget.id, { agentName: reelForm.agentName, agentPhone: reelForm.agentPhone });
+      await api.startReelVideo(token, reelTarget.id, {
+        agentName: reelForm.agentName,
+        agentPhone: reelForm.agentPhone,
+        voiceGender: reelForm.voiceGender,
+      });
       toast.success("Video en proceso. Ve a Videos de propiedades para ver el progreso.");
       setReelTarget(null);
-      setReelForm({ agentName: "", agentPhone: "" });
+      setReelForm({ agentName: "", agentPhone: "", voiceGender: "female" });
     } catch (e: unknown) { toast.error(getErrorMessage(e)); }
     setReelStarting(false);
   };
@@ -346,7 +350,7 @@ export default function PropertiesPage() {
                     <button onClick={() => handleInstagramImage(p)} className="p-1.5 text-gray-400 hover:text-pink-600 rounded" title="Generar imagen Instagram" disabled={igLoading === p.id}>
                       {igLoading === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}
                     </button>
-                    <button onClick={() => { setReelTarget(p); setReelForm({ agentName: "", agentPhone: "" }); }} className="p-1.5 text-gray-400 hover:text-purple-600 rounded" title="Generar video Reel">
+                    <button onClick={() => { setReelTarget(p); setReelForm({ agentName: "", agentPhone: "", voiceGender: "female" }); }} className="p-1.5 text-gray-400 hover:text-purple-600 rounded" title="Generar video Reel">
                       <Film className="h-4 w-4" />
                     </button>
                     <button onClick={() => openEdit(p)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded"><Edit2 className="h-4 w-4" /></button>
@@ -833,7 +837,7 @@ export default function PropertiesPage() {
             <div className="p-4 space-y-4">
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Video vertical 1080×1920 con las fotos de <strong className="text-gray-900 dark:text-white">{reelTarget.title}</strong>.
-                Ingresá los datos de contacto que aparecerán al final del video.
+                Incluye narración en voz argentina, subtítulos y transiciones únicas por slide.
               </p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tu nombre</label>
@@ -850,6 +854,28 @@ export default function PropertiesPage() {
                   placeholder="Ej: +598 99 123 456"
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Voz TTS (acento argentino)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["female", "male"] as const).map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => setReelForm((f) => ({ ...f, voiceGender: g }))}
+                      className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                        reelForm.voiceGender === g
+                          ? "border-purple-500 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                          : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500"
+                      }`}
+                    >
+                      <span>{g === "female" ? "👩" : "👨"}</span>
+                      {g === "female" ? "Mujer (Elena)" : "Hombre (Tomás)"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                  La narración se genera automáticamente desde la descripción de la propiedad.
+                </p>
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t dark:border-gray-700">
