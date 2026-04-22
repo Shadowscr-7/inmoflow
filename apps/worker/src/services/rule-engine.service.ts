@@ -577,6 +577,7 @@ export class RuleEngineService {
     const formFields = this.parseFormFields(lead.notes ?? "");
 
     // ── {{propiedad}}: extract from form name or question text
+    // Priority 0: explicit "Propiedad" field stored by the webhook (• Propiedad: la casa en venta...)
     // Priority 1: extract text between "contacto por" and "de U$S" from the form question stored in notes
     // e.g. "...en contacto por la Casa en Venta en Cordón de U$S 138.000?" → "la Casa en Venta en Cordón"
     // Priority 2: strip the agent suffix from metaFormName
@@ -585,11 +586,19 @@ export class RuleEngineService {
     const PROPERTY_PREFIXES = /^(casa|apartamento|apto|terreno|local|depósito|deposito|galpón|galpon|garage|oficina|chacra|campo|ph|penthouse|padrón|padron|la |el |los |las )/i;
     let propertyDesc = "";
 
-    // Try extracting from the qualifier question text: "por <PROPIEDAD> de U$S"
+    // Priority 0: explicit Propiedad field (set by webhook or recovery)
+    const explicitPropiedad = formFields["propiedad"];
+    if (explicitPropiedad && explicitPropiedad.length > 3) {
+      propertyDesc = explicitPropiedad;
+    }
+
+    // Priority 1: extract from qualifier question text: "por <PROPIEDAD> de U$S"
     const notes = lead.notes ?? "";
-    const questionMatch = notes.match(/(?:contacto\s+por|por\s+la?\s+)\s+(.+?)\s+de\s+[Uu]\$[Ss]/i);
-    if (questionMatch?.[1]) {
-      propertyDesc = questionMatch[1].trim();
+    if (!propertyDesc) {
+      const questionMatch = notes.match(/(?:contacto\s+por|por\s+la?\s+)\s+(.+?)\s+de\s+[Uu]\$[Ss]/i);
+      if (questionMatch?.[1]) {
+        propertyDesc = questionMatch[1].trim();
+      }
     }
 
     // Fallback: strip trailing " - AgentName" from form name
@@ -780,14 +789,15 @@ export class RuleEngineService {
 
       result[key] = value;
 
-      // Canonical aliases based on what the question is about
-      if (PROPERTY_TYPE_SEEDS.some((s) => key.includes(s)) && !("tipo_propiedad" in result)) {
+      // Canonical aliases based on what the question is about.
+      // Guard: skip aliases when value is a si/no boolean (qualifier answer, not a property type/location).
+      const isSiNo = /^(si|sí|no)$/i.test(value);
+      if (!isSiNo && PROPERTY_TYPE_SEEDS.some((s) => key.includes(s)) && !("tipo_propiedad" in result)) {
         result["tipo_propiedad"] = value;
       }
-      if (LOCATION_SEEDS.some((s) => key.includes(s)) && !("zona" in result)) {
+      if (!isSiNo && LOCATION_SEEDS.some((s) => key.includes(s)) && !("zona" in result)) {
         result["zona"] = value;
       }
-      const isSiNo = /^(si|sí|no)$/i.test(value);
       if (isSiNo && INTEREST_SEEDS.some((s) => key.includes(s))) {
         result["interes"] = value.toLowerCase().startsWith("s") ? "Si" : "No";
       }

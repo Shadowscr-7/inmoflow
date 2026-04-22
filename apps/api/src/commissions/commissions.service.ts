@@ -166,6 +166,7 @@ export class CommissionsService {
       dealAmount?: number;
       commissionPct?: number;
       agentPct?: number;
+      proofUrl?: string;
     },
   ) {
     const existing = await this.prisma.commission.findFirst({ where: { id, tenantId } });
@@ -177,6 +178,7 @@ export class CommissionsService {
       if (data.status === "PAID") updateData.paidAt = new Date();
     }
     if (data.notes !== undefined) updateData.notes = data.notes;
+    if (data.proofUrl !== undefined) updateData.proofUrl = data.proofUrl;
 
     // Recalculate amounts if financial fields changed
     const dealAmount = data.dealAmount ?? existing.dealAmount;

@@ -22,6 +22,9 @@ import {
   ChevronDown,
   Pencil,
   Trash2,
+  Paperclip,
+  Upload,
+  ExternalLink,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
@@ -98,10 +101,10 @@ export default function CommissionsPage() {
     return u?.name || u?.email || id.slice(0, 8);
   };
 
-  const tabs: { key: Tab; label: string; icon: typeof DollarSign }[] = [
+  const tabs: { key: Tab; label: string; icon: typeof DollarSign; managerOnly?: boolean }[] = [
     { key: "list", label: "Comisiones", icon: DollarSign },
-    { key: "rules", label: "Reglas", icon: Settings },
-    { key: "summary", label: "Resumen", icon: BarChart3 },
+    { key: "rules", label: "Reglas", icon: Settings, managerOnly: true },
+    { key: "summary", label: "Resumen", icon: BarChart3, managerOnly: true },
   ];
 
   return (
@@ -114,7 +117,7 @@ export default function CommissionsPage() {
 
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700 flex gap-4">
-        {tabs.map((t) => {
+        {tabs.filter((t) => !t.managerOnly || isManager).map((t) => {
           const Icon = t.icon;
           return (
             <button
@@ -191,6 +194,7 @@ function CommissionsList({
   const [filterAgent, setFilterAgent] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [payModal, setPayModal] = useState<Commission | null>(null);
 
   const loadCommissions = useCallback(async () => {
     if (!token) return;
@@ -288,6 +292,7 @@ function CommissionsList({
                 <th className="pb-2 pr-3 text-right">Agente recibe</th>
                 <th className="pb-2 pr-3 text-right">Inmobiliaria</th>
                 <th className="pb-2 pr-3">Estado</th>
+                <th className="pb-2 pr-3">Comprobante</th>
                 {isManager && <th className="pb-2">Acciones</th>}
               </tr>
             </thead>
@@ -303,6 +308,28 @@ function CommissionsList({
                   <td className="py-2 pr-3 text-right font-mono text-green-600">{money(c.agentAmount)}</td>
                   <td className="py-2 pr-3 text-right font-mono text-blue-600">{money(c.bizAmount)}</td>
                   <td className="py-2 pr-3"><StatusBadge status={c.status} /></td>
+                  <td className="py-2 pr-3">
+                    {c.proofUrl ? (
+                      <a
+                        href={c.proofUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                      >
+                        <Paperclip size={12} /> Ver
+                      </a>
+                    ) : (
+                      isManager && c.status === "PAID" ? (
+                        <button
+                          onClick={() => setPayModal(c)}
+                          className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-green-600"
+                          title="Adjuntar comprobante"
+                        >
+                          <Upload size={12} /> Adjuntar
+                        </button>
+                      ) : <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </td>
                   {isManager && (
                     <td className="py-2">
                       <div className="flex items-center gap-1">
@@ -317,7 +344,7 @@ function CommissionsList({
                         )}
                         {c.status === "APPROVED" && (
                           <button
-                            onClick={() => handleStatusChange(c.id, "PAID")}
+                            onClick={() => setPayModal(c)}
                             className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
                             title="Marcar pagada"
                           >
@@ -370,6 +397,148 @@ function CommissionsList({
           addToast={addToast}
         />
       )}
+
+      {/* Pay + proof modal */}
+      {payModal && (
+        <PayProofModal
+          token={token}
+          commission={payModal}
+          onClose={() => setPayModal(null)}
+          onSaved={() => { setPayModal(null); loadCommissions(); }}
+          addToast={addToast}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Pay + Proof Modal ──────────────────────────── */
+
+function PayProofModal({
+  token,
+  commission,
+  onClose,
+  onSaved,
+  addToast,
+}: {
+  token: string | null;
+  commission: Commission;
+  onClose: () => void;
+  onSaved: () => void;
+  addToast: (t: { type: string; message: string }) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const alreadyPaid = commission.status === "PAID";
+
+  const handleSave = async () => {
+    if (!token) return;
+    setUploading(true);
+    try {
+      let proofUrl: string | undefined = undefined;
+
+      if (file) {
+        const formData = new FormData();
+        formData.append("files", file);
+        const uploadRes = await fetch("/api/uploads", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        if (!uploadRes.ok) throw new Error("Error al subir el archivo");
+        const uploadData = await uploadRes.json() as { files?: { publicUrl: string }[] };
+        proofUrl = uploadData.files?.[0]?.publicUrl;
+        if (!proofUrl) throw new Error("No se recibió URL del comprobante");
+      }
+
+      const update: { status?: string; proofUrl?: string } = {};
+      if (!alreadyPaid) update.status = "PAID";
+      if (proofUrl) update.proofUrl = proofUrl;
+
+      await api.updateCommission(token, commission.id, update);
+      addToast({ type: "success", message: alreadyPaid ? "Comprobante adjuntado" : "Comisión marcada como pagada" });
+      onSaved();
+    } catch (e) {
+      addToast({ type: "error", message: (e as Error).message || "Error al guardar" });
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            <DollarSign size={18} className="text-green-600" />
+            {alreadyPaid ? "Adjuntar comprobante" : "Marcar como pagada"}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Commission summary */}
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-sm space-y-1">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Agente recibe:</span>
+            <span className="font-bold text-green-600">{money(commission.agentAmount)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Inmobiliaria:</span>
+            <span className="font-bold text-blue-600">{money(commission.bizAmount)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Total comisión:</span>
+            <span className="font-bold">{money(commission.commissionTotal)}</span>
+          </div>
+        </div>
+
+        {/* Proof upload */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Comprobante de pago <span className="text-gray-400 font-normal">(opcional)</span>
+          </label>
+          {commission.proofUrl && (
+            <a
+              href={commission.proofUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-blue-600 hover:underline mb-2"
+            >
+              <ExternalLink size={12} /> Ver comprobante actual
+            </a>
+          )}
+          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 cursor-pointer hover:border-green-400 transition-colors">
+            <Upload size={20} className="text-gray-400 mb-1" />
+            <span className="text-xs text-gray-500">
+              {file ? file.name : "PDF, imagen (máx. 25 MB)"}
+            </span>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              className="hidden"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded border dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={uploading}
+            className="px-4 py-2 text-sm rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {uploading && <span className="animate-spin">⏳</span>}
+            {alreadyPaid ? "Guardar comprobante" : "Confirmar pago"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

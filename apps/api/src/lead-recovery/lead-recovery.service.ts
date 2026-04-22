@@ -219,11 +219,38 @@ export class LeadRecoveryService {
     });
 
     const customFields = rawData.customFields as Record<string, string> ?? {};
+
+    // Detect qualifier question ("te interesa / contacto por") — same logic as webhook
+    const teInteresaKey = Object.keys(customFields).find(
+      (k) => /te.interesa/i.test(k) || /interesa.agente/i.test(k) || /contacto.por/i.test(k),
+    ) ?? null;
+    const teInteresaAnswer = teInteresaKey ? customFields[teInteresaKey] : null;
+
+    // Extract property title from the qualifier key (replace _ with spaces, find "por <PROP>")
+    let propertyTitle: string | null = null;
+    if (teInteresaKey) {
+      const keyText = teInteresaKey.replace(/_/g, " ").replace(/\?$/, "").replace(/u\$s/gi, "U$S");
+      const keyMatch = keyText.match(/(?:por\s+)(.+)$/i);
+      if (keyMatch) propertyTitle = keyMatch[1].trim();
+    }
+
+    // Build custom lines with human-readable labels (exclude qualifier key, add explicit fields)
+    const customLines = Object.entries(customFields)
+      .filter(([k]) => k !== teInteresaKey)
+      .map(([k, v]) => `• ${k.replace(/_/g, " ")}: ${v}`);
+
+    if (teInteresaAnswer) {
+      customLines.unshift(`• Te interesa contacto: ${teInteresaAnswer}`);
+    }
+    if (propertyTitle) {
+      customLines.unshift(`• Propiedad: ${propertyTitle}`);
+    }
+
     const noteLines = [
       "Origen: Meta Lead Ad",
       existing.formName ? `Formulario: ${existing.formName}` : `Form ID: ${existing.formId}`,
       `Leadgen ID: ${leadgenId}`,
-      ...(Object.keys(customFields).length > 0 ? ["", "Respuestas del formulario:", ...Object.entries(customFields).map(([k, v]) => `• ${k}: ${v}`)] : []),
+      ...(customLines.length > 0 ? ["", "Respuestas del formulario:", ...customLines] : []),
     ];
 
     const lead = await this.prisma.lead.create({

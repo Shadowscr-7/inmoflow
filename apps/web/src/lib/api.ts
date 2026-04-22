@@ -764,6 +764,7 @@ export interface Commission {
   status: "PENDING" | "APPROVED" | "PAID" | "CANCELLED";
   paidAt: string | null;
   notes: string | null;
+  proofUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1486,7 +1487,7 @@ export const api = {
   createCommission(token: string, data: { agentId: string; leadId?: string; propertyId?: string; operationType: string; dealAmount: number; commissionPct?: number; agentPct?: number; notes?: string }) {
     return apiFetch<Commission>("/commissions", { token, method: "POST", body: JSON.stringify(data) });
   },
-  updateCommission(token: string, id: string, data: { status?: string; notes?: string; dealAmount?: number; commissionPct?: number; agentPct?: number }) {
+  updateCommission(token: string, id: string, data: { status?: string; notes?: string; dealAmount?: number; commissionPct?: number; agentPct?: number; proofUrl?: string }) {
     return apiFetch<Commission>(`/commissions/${id}`, { token, method: "PATCH", body: JSON.stringify(data) });
   },
   deleteCommission(token: string, id: string) {

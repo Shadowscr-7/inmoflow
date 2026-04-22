@@ -123,6 +123,7 @@ export class CommissionsController {
       dealAmount?: number;
       commissionPct?: number;
       agentPct?: number;
+      proofUrl?: string;
     },
   ) {
     return this.svc.update(tenantId, id, body);

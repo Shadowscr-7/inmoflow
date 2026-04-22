@@ -868,6 +868,7 @@ model Commission {
   status          CommissionStatus @default(PENDING)
   paidAt          DateTime?
   notes           String?
+  proofUrl        String?          @map("proof_url")
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
