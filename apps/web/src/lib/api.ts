@@ -1328,6 +1328,7 @@ export const api = {
     autoApproveStageIds?: string[];
     autoSend?: boolean;
     sourceId?: string;
+    sourceType?: string;
     leadIds?: string[];
   }) {
     return apiFetch<BroadcastBatch>("/broadcasts", { token, method: "POST", body: JSON.stringify(data) });

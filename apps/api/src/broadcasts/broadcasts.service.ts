@@ -45,6 +45,18 @@ export class BroadcastsService {
         select: { id: true, name: true, stageId: true },
       });
       leadIds = leads.map((l) => l.id);
+    } else if (leadIds.length === 0 && dto.sourceType) {
+      const sources = await this.prisma.leadSource.findMany({
+        where: { tenantId, type: dto.sourceType },
+        select: { id: true },
+      });
+      if (sources.length > 0) {
+        const leads = await this.prisma.lead.findMany({
+          where: { tenantId, sourceId: { in: sources.map((s) => s.id) }, phone: { not: null } },
+          select: { id: true, name: true, stageId: true },
+        });
+        leadIds = leads.map((l) => l.id);
+      }
     }
     if (leadIds.length === 0) {
       throw new BadRequestException("No se encontraron leads para la difusión");

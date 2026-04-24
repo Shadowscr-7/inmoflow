@@ -48,7 +48,8 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
   const [oldPrice, setOldPrice] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [propertyTitle, setPropertyTitle] = useState("");
-  const [sourceId, setSourceId] = useState("");
+  // sourceValue: "" | "_type_META_LEAD_AD" (all Meta) | "<uuid>" (specific source)
+  const [sourceValue, setSourceValue] = useState("");
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [autoApproveStageIds, setAutoApproveStageIds] = useState<string[]>([]);
@@ -60,7 +61,7 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
       api.getLeadSources(token),
       api.getStages(token),
     ]).then(([srcs, stgs]) => {
-      setSources(srcs.filter((s) => s.type === "META_LEAD_AD" && s.metaFormId));
+      setSources(srcs.filter((s) => s.type === "META_LEAD_AD"));
       setStages(stgs);
     }).catch(() => {}).finally(() => setLoadingSources(false));
   }, [token]);
@@ -72,8 +73,9 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
   };
 
   const handleSubmit = async () => {
-    if (!title.trim() || !message.trim() || !sourceId) return;
+    if (!title.trim() || !message.trim() || !sourceValue) return;
     setSaving(true);
+    const isAllMeta = sourceValue === "_type_META_LEAD_AD";
     try {
       const batch = await api.createBroadcast(token, {
         type,
@@ -83,11 +85,10 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
           oldPrice: oldPrice ? Number(oldPrice.replace(/\D/g, "")) : undefined,
           newPrice: newPrice ? Number(newPrice.replace(/\D/g, "")) : undefined,
           propertyTitle: propertyTitle || undefined,
-          sourceId,
         },
         autoApproveStageIds,
         autoSend,
-        sourceId,
+        ...(isAllMeta ? { sourceType: "META_LEAD_AD" } : { sourceId: sourceValue }),
       });
       toast.success(`Difusión creada con ${batch._count.items} leads`);
       onCreated(batch);
@@ -126,17 +127,28 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
 
           {/* Source */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Formulario Meta Lead Ads *</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Fuente de leads *</label>
             {loadingSources ? <Spinner className="h-4 w-4" /> : (
-              <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}
+              <select value={sourceValue} onChange={(e) => setSourceValue(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                <option value="">— Seleccioná el formulario —</option>
-                {sources.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name} {s.metaFormName ? `(${s.metaFormName})` : ""}</option>
-                ))}
+                <option value="">— Seleccioná la fuente —</option>
+                <option value="_type_META_LEAD_AD">📋 Todos los leads de Meta (todos los formularios)</option>
+                {sources.length > 0 && (
+                  <optgroup label="Formularios específicos">
+                    {sources.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}{s.metaFormName ? ` (${s.metaFormName})` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             )}
-            <p className="text-xs text-gray-400 mt-1">Se notificará a todos los leads que entraron por este formulario y tienen teléfono.</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {sourceValue === "_type_META_LEAD_AD"
+                ? "Se notificará a todos los leads de Meta Lead Ads que tienen teléfono."
+                : "Se notificará a todos los leads de este formulario que tienen teléfono."}
+            </p>
           </div>
 
           {/* Prices (for PRICE_CHANGE) */}
@@ -206,7 +218,7 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               Cancelar
             </button>
-            <button onClick={handleSubmit} disabled={saving || !title.trim() || !message.trim() || !sourceId}
+            <button onClick={handleSubmit} disabled={saving || !title.trim() || !message.trim() || !sourceValue}
               className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-2">
               {saving && <Spinner className="h-4 w-4" />}
               Crear difusión

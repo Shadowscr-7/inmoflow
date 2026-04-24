@@ -26,10 +26,14 @@ export class CreateBroadcastDto {
   @IsBoolean()
   autoSend?: boolean;
 
-  // Leads source: either sourceId (LeadSource) or explicit leadIds
+  // Leads source: sourceId (specific form), sourceType (all of a type), or explicit leadIds
   @IsOptional()
   @IsString()
   sourceId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceType?: string;
 
   @IsOptional()
   @IsArray()
