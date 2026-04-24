@@ -65,6 +65,7 @@ export class TicketsService {
         data: {
           tenantId: ticket.tenantId,
           userId: ticket.creatorId,
+          type: "system",
           title: "Incidencia resuelta",
           message: `Tu incidencia "${ticket.title}" ha sido resuelta.${resolvedNote ? " " + resolvedNote : ""}`,
           entity: "ticket",
