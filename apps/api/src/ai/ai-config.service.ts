@@ -45,6 +45,30 @@ export class AiConfigService {
     return config;
   }
 
+  /** Returns a synthetic config using the platform's own OpenAI key (env), or null */
+  getPlatformDefault(): { id: string; provider: AiProvider; apiKey: string; model: string; enabled: boolean; systemPrompt: null; temperature: number; maxTokens: number; isPlatformDefault: true } | null {
+    const key = process.env.PLATFORM_OPENAI_API_KEY;
+    if (!key) return null;
+    return {
+      id: "platform",
+      provider: "OPENAI" as AiProvider,
+      apiKey: key,
+      model: process.env.PLATFORM_AI_MODEL || "gpt-4o-mini",
+      enabled: true,
+      systemPrompt: null,
+      temperature: 0.7,
+      maxTokens: 1024,
+      isPlatformDefault: true,
+    };
+  }
+
+  /** Tenant config first, then platform fallback, then null */
+  async getEffectiveConfig(tenantId: string, userId?: string | null) {
+    const config = await this.findByTenant(tenantId, userId);
+    if (config) return { ...config, isPlatformDefault: false };
+    return this.getPlatformDefault();
+  }
+
   /** Create or update (upsert) AI config */
   async upsert(tenantId: string, dto: {
     provider: string;

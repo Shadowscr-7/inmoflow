@@ -96,6 +96,20 @@ enum Plan {
   CUSTOM
 }
 
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+}
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+  CRYPTO
+  MANUAL
+}
+
 enum LeadTemperature {
   COLD
   WARM
@@ -123,6 +137,18 @@ model Tenant {
   meliUserId           String?  // MeLi numeric user ID
   meliEnabled          Boolean  @default(false)
   meliLastSync         DateTime?
+  /// Telegram lead notifications — per-tenant bot config
+  telegramNotifEnabled   Boolean @default(false)
+  telegramNotifBotToken  String?
+  telegramNotifChatId    String?
+  /// Subscription / billing
+  subscriptionStatus    SubscriptionStatus @default(ACTIVE)
+  subscriptionStartedAt DateTime?
+  subscriptionEndsAt    DateTime?
+  subscriptionGraceDays Int                @default(5)
+  paymentProvider       PaymentProvider?
+  paymentReference      String?
+  paymentNotes          String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -153,6 +179,8 @@ model Tenant {
   queuedActions      QueuedAction[]
   agentAvailabilities AgentAvailability[]
   leadApprovals      LeadApproval[]
+  tickets            Ticket[]
+  broadcastBatches   BroadcastBatch[]
 }
 
 model Domain {
@@ -188,6 +216,8 @@ model User {
   agentGoals        AgentGoal[]
   aiConfigs         AiConfig[]
   availability      AgentAvailability[]
+  createdTickets    Ticket[]           @relation("TicketCreator")
+  broadcastBatches  BroadcastBatch[]   @relation("BroadcastCreator")
 
   /// Google Calendar OAuth refresh token (encrypted)
   googleCalendarRefreshToken String?
@@ -308,7 +338,8 @@ model Lead {
   tags         LeadTag[]
   customValues CustomFieldValue[]
   visits       Visit[]
-  followUpRuns FollowUpRun[]
+  followUpRuns    FollowUpRun[]
+  broadcastItems  BroadcastItem[]
 
   @@index([tenantId, status])
   @@index([tenantId, stageId])
@@ -878,4 +909,116 @@ model Commission {
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
   @@index([tenantId, operationType])
+}
+
+// ─── INCIDENCIAS / TICKETS ───────────────────────────
+
+enum TicketStatus {
+  PENDING     // Estado inicial — el creador aún puede editar
+  IN_PROGRESS // Admin está trabajando en ello
+  RESOLVED    // Incidencia resuelta
+  CLOSED      // Estado final cerrado
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Ticket {
+  id          String         @id @default(uuid())
+  tenantId    String
+  creatorId   String
+  title       String
+  description String
+  status      TicketStatus   @default(PENDING)
+  priority    TicketPriority @default(MEDIUM)
+  adminNote   String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator     User               @relation("TicketCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  attachments TicketAttachment[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, creatorId])
+  @@index([tenantId, createdAt])
+  @@index([creatorId])
+}
+
+model TicketAttachment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  url       String
+  filename  String
+  mimetype  String
+  size      Int
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+// ─── DIFUSIONES / BROADCAST ──────────────────────────
+
+enum BroadcastStatus {
+  DRAFT
+  READY
+  SENDING
+  DONE
+  CANCELLED
+}
+
+enum BroadcastItemStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SENT
+  FAILED
+}
+
+model BroadcastBatch {
+  id                  String          @id @default(uuid())
+  tenantId            String
+  type                String          // "PRICE_CHANGE" | "ANNOUNCEMENT"
+  title               String
+  message             String          // template: {nombre}, {precio_nuevo}, {precio_anterior}, {propiedad}
+  metadata            Json?           // { oldPrice, newPrice, sourceId, propertyId, propertyTitle }
+  status              BroadcastStatus @default(DRAFT)
+  autoApproveStageIds String[]
+  autoSend            Boolean         @default(false)
+  createdBy           String
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator User            @relation("BroadcastCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  items   BroadcastItem[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([createdBy])
+}
+
+model BroadcastItem {
+  id        String              @id @default(uuid())
+  batchId   String
+  leadId    String
+  channelId String?
+  status    BroadcastItemStatus @default(PENDING)
+  message   String?
+  sentAt    DateTime?
+  error     String?
+  createdAt DateTime            @default(now())
+
+  batch BroadcastBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  lead  Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, leadId])
+  @@index([batchId, status])
+  @@index([leadId])
 }

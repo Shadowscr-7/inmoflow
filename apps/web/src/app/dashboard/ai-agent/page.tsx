@@ -55,6 +55,8 @@ export default function AiAgentPage() {
 
   // Config form state
   const [configured, setConfigured] = useState(false);
+  const [hasPlatformDefault, setHasPlatformDefault] = useState(false);
+  const [platformModel, setPlatformModel] = useState("");
   const [provider, setProvider] = useState("OPENAI");
   const [apiKey, setApiKey] = useState("");
   const [apiKeyHint, setApiKeyHint] = useState("");
@@ -84,9 +86,10 @@ export default function AiAgentPage() {
       if (configData.configured && configData.config) {
         const c = configData.config;
         setConfigured(true);
+        setHasPlatformDefault(false);
         setProvider(c.provider);
         setApiKeyHint(c.apiKeyHint);
-        setApiKey(""); // don't show actual key
+        setApiKey("");
         setModel(c.model);
         setEnabled(c.enabled);
         setSystemPrompt(c.systemPrompt ?? "");
@@ -94,7 +97,8 @@ export default function AiAgentPage() {
         setMaxTokens(c.maxTokens);
       } else {
         setConfigured(false);
-        // Set default model for selected provider
+        setHasPlatformDefault(!!configData.hasPlatformDefault);
+        setPlatformModel(configData.platformModel ?? "gpt-4o-mini");
         const firstProvider = Object.keys(providerData)[0] ?? "OPENAI";
         setProvider(firstProvider);
         const firstModel = providerData[firstProvider]?.models[0]?.value ?? "";
@@ -194,6 +198,7 @@ export default function AiAgentPage() {
       setConfigured(false);
       setApiKey("");
       setApiKeyHint("");
+      setHasPlatformDefault(false);
       setSystemPrompt("");
       setTestResult(null);
       setChatHistory([]);
@@ -277,6 +282,22 @@ export default function AiAgentPage() {
           ) : undefined
         }
       />
+
+      {/* Platform default notice */}
+      {!configured && hasPlatformDefault && (
+        <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800 p-4 flex items-start gap-3">
+          <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+              Agente IA de InmoFlow disponible
+            </p>
+            <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-0.5">
+              Podés usar el agente IA de InmoFlow sin configurar tu propia clave. Usamos <strong>GPT ({platformModel})</strong> internamente.
+              Probá el chat ahora mismo o configurá tu propia clave para mayor control.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* ─── LEFT: Configuration form ──────────── */}
@@ -432,7 +453,7 @@ export default function AiAgentPage() {
                 <><Save className="w-4 h-4" /> Guardar configuración</>
               )}
             </button>
-            {configured && (
+            {(configured || hasPlatformDefault) && (
               <button onClick={handleTest} disabled={testing} className="btn-secondary">
                 {testing ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Probando...</>
@@ -479,7 +500,7 @@ export default function AiAgentPage() {
               </p>
             </div>
 
-            {!configured ? (
+            {!configured && !hasPlatformDefault ? (
               <div className="p-6 text-center">
                 <AlertTriangle className="w-8 h-8 mx-auto text-gray-300 mb-2" />
                 <p className="text-sm text-gray-500 dark:text-gray-400">Guardá la configuración primero para probar el chat.</p>

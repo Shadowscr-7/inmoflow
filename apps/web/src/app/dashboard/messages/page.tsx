@@ -72,7 +72,8 @@ export default function MessagesPage() {
       if (directionFilter) params.direction = directionFilter;
       if (statusFilter) params.status = statusFilter;
       if (channelFilter) params.channel = channelFilter;
-      if (assigneeFilter) params.assigneeId = assigneeFilter;
+      if (!isManager && user?.id) params.assigneeId = user.id;
+      else if (assigneeFilter) params.assigneeId = assigneeFilter;
       if (dateFrom) params.from = dateFrom;
       if (dateTo) params.to = dateTo;
 
@@ -83,7 +84,7 @@ export default function MessagesPage() {
       toast.error("Error al cargar mensajes");
     }
     setLoading(false);
-  }, [token, page, debouncedSearch, directionFilter, statusFilter, channelFilter, assigneeFilter, dateFrom, dateTo]);
+  }, [token, page, debouncedSearch, directionFilter, statusFilter, channelFilter, assigneeFilter, dateFrom, dateTo, isManager, user?.id]);
 
   useEffect(() => {
     loadMessages();
@@ -172,14 +173,7 @@ export default function MessagesPage() {
       " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
   };
 
-  // Guard: only ADMIN / BUSINESS
-  if (user && user.role !== "ADMIN" && user.role !== "BUSINESS") {
-    return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
-        No tienes permisos para ver esta sección.
-      </div>
-    );
-  }
+  const isManager = user?.role === "ADMIN" || user?.role === "BUSINESS";
 
   return (
     <div className="space-y-6">
@@ -256,19 +250,21 @@ export default function MessagesPage() {
             <option value="WEB">Web</option>
           </select>
 
-          {/* Assignee */}
-          <select
-            value={assigneeFilter}
-            onChange={(e) => { setAssigneeFilter(e.target.value); setPage(0); }}
-            className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">Todos los agentes</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name ?? u.email}
-              </option>
-            ))}
-          </select>
+          {/* Assignee — managers only */}
+          {isManager && (
+            <select
+              value={assigneeFilter}
+              onChange={(e) => { setAssigneeFilter(e.target.value); setPage(0); }}
+              className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Todos los agentes</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name ?? u.email}
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Date range */}
           <div className="flex items-center gap-2 sm:col-span-2">

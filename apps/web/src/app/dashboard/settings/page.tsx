@@ -17,6 +17,7 @@ import {
   Sparkles,
   Zap,
   AlertTriangle,
+  Send,
 } from "lucide-react";
 import {
   PageHeader,
@@ -27,6 +28,128 @@ import {
   useConfirm,
   Badge,
 } from "@/components/ui";
+
+// ─── Telegram Notification Settings Component ─────────
+
+function TelegramNotifSettings({ token }: { token: string }) {
+  const toast = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [botToken, setBotToken] = useState("");
+  const [chatId, setChatId] = useState("");
+
+  useEffect(() => {
+    api.getTenant(token)
+      .then((t) => {
+        setEnabled(t.telegramNotifEnabled ?? false);
+        setBotToken(t.telegramNotifBotToken ?? "");
+        setChatId(t.telegramNotifChatId ?? "");
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const canEnable = botToken.trim().length > 0 && chatId.trim().length > 0;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await api.updateTenantSettings(token, {
+        telegramNotifEnabled: enabled,
+        telegramNotifBotToken: botToken.trim(),
+        telegramNotifChatId: chatId.trim(),
+      });
+      setEnabled(res.telegramNotifEnabled);
+      setBotToken(res.telegramNotifBotToken ?? "");
+      setChatId(res.telegramNotifChatId ?? "");
+      toast.success("Configuración guardada");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error al guardar";
+      toast.error(msg);
+      setEnabled(false); // revert toggle if save failed
+    }
+    setSaving(false);
+  };
+
+  const handleToggle = (val: boolean) => {
+    if (val && !canEnable) {
+      toast.error("Completá el bot token y el chat ID antes de activar");
+      return;
+    }
+    setEnabled(val);
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 mt-6">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center">
+            <Send className="w-5 h-5 text-sky-600" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">Notificaciones por Telegram</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Recibí nuevos leads en tu propio bot de Telegram</p>
+          </div>
+        </div>
+        {/* Toggle */}
+        <button
+          type="button"
+          onClick={() => handleToggle(!enabled)}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+            enabled ? "bg-sky-500" : "bg-gray-200 dark:bg-gray-600"
+          } ${!canEnable && !enabled ? "opacity-40 cursor-not-allowed" : ""}`}
+        >
+          <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enabled ? "translate-x-5" : "translate-x-0"}`} />
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Bot Token <span className="text-gray-400">(de BotFather)</span>
+          </label>
+          <input
+            type="password"
+            value={botToken}
+            onChange={(e) => setBotToken(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+            placeholder="123456789:ABCDefGhIJKlmNOPQrstuvwxyz"
+            autoComplete="off"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Chat ID <span className="text-gray-400">(grupo o usuario)</span>
+          </label>
+          <input
+            type="text"
+            value={chatId}
+            onChange={(e) => setChatId(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+            placeholder="-1001234567890"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Podés obtener el Chat ID agregando @userinfobot al grupo y enviando un mensaje.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-end mt-5">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+        >
+          {saving && <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+          Guardar configuración
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type Tenant = { id: string; name: string; plan: string; _count: { users: number } };
 
@@ -452,6 +575,9 @@ export default function SettingsPage() {
           </table>
         </div>
       )}
+
+      {/* Telegram Notifications (BUSINESS only) */}
+      {isBusiness && <TelegramNotifSettings token={token!} />}
 
       {/* Create / Edit Modal */}
       {showModal && (

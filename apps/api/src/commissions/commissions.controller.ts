@@ -11,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { CommissionsService } from "./commissions.service";
 import { JwtAuthGuard, TenantGuard, RolesGuard, Roles } from "../auth/guards";
-import { TenantId } from "../auth/decorators";
+import { TenantId, CurrentUser } from "../auth/decorators";
 
 @Controller("commissions")
 @UseGuards(JwtAuthGuard, TenantGuard)
@@ -54,6 +54,7 @@ export class CommissionsController {
   @Get()
   findAll(
     @TenantId() tenantId: string,
+    @CurrentUser() caller: { id: string; role: string },
     @Query("agentId") agentId?: string,
     @Query("status") status?: string,
     @Query("operationType") operationType?: string,
@@ -62,8 +63,9 @@ export class CommissionsController {
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
   ) {
+    const effectiveAgentId = caller.role === "AGENT" ? caller.id : agentId;
     return this.svc.findAll(tenantId, {
-      agentId,
+      agentId: effectiveAgentId,
       status,
       operationType,
       from,
@@ -92,9 +94,10 @@ export class CommissionsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "BUSINESS")
+  @Roles("ADMIN", "BUSINESS", "AGENT")
   create(
     @TenantId() tenantId: string,
+    @CurrentUser() caller: { id: string; role: string },
     @Body()
     body: {
       agentId: string;
@@ -107,7 +110,10 @@ export class CommissionsController {
       notes?: string;
     },
   ) {
-    return this.svc.create(tenantId, body);
+    const effectiveBody = caller.role === "AGENT"
+      ? { ...body, agentId: caller.id }
+      : body;
+    return this.svc.create(tenantId, effectiveBody);
   }
 
   @Patch(":id")

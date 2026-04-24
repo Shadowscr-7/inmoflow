@@ -41,6 +41,10 @@ import {
   Store,
   MessageSquare,
   Film,
+  AlertTriangle,
+  Megaphone,
+  ShieldOff,
+  CreditCard,
 } from "lucide-react";
 import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
@@ -76,11 +80,14 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Importar", href: "/dashboard/import", icon: Upload, roles: ["ADMIN", "BUSINESS"] },
   { label: "Recuperar leads", href: "/dashboard/lead-recovery", icon: RotateCcw, roles: ["ADMIN", "BUSINESS"] },
   { label: "Reportes", href: "/dashboard/reports", icon: BarChart3, roles: ["ADMIN", "BUSINESS"] },
-  { label: "Mensajes", href: "/dashboard/messages", icon: MessageSquare, roles: ["ADMIN", "BUSINESS"] },
+  { label: "Mensajes", href: "/dashboard/messages", icon: MessageSquare, roles: ["ADMIN", "BUSINESS", "AGENT"] },
   { label: "Rendimiento", href: "/dashboard/agent-performance", icon: Trophy, roles: ["ADMIN", "BUSINESS"] },
   { label: "Comisiones", href: "/dashboard/commissions", icon: Wallet, roles: ["ADMIN", "BUSINESS", "AGENT"] },
+  { label: "Incidencias", href: "/dashboard/incidencias", icon: AlertTriangle, roles: ["ADMIN", "BUSINESS", "AGENT"] },
+  { label: "Difusiones", href: "/dashboard/difusiones", icon: Megaphone, roles: ["ADMIN", "BUSINESS"] },
   { label: "Agente IA", href: "/dashboard/ai-agent", icon: Bot, roles: ["ADMIN", "BUSINESS"], minPlan: "PROFESSIONAL" },
   { label: "MercadoLibre", href: "/dashboard/mercadolibre", icon: Store, roles: ["ADMIN", "BUSINESS"] },
+  { label: "Tenants / Billing", href: "/dashboard/admin/tenants", icon: CreditCard, roles: ["ADMIN"] },
   { label: "Usuarios", href: "/dashboard/settings", icon: Settings, roles: ["ADMIN", "BUSINESS"] },
   { label: "Mi perfil", href: "/dashboard/profile", icon: UserCircle },
 ];
@@ -113,8 +120,9 @@ export default function DashboardLayout({
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const [tenantPlan, setTenantPlan] = useState<string>("CUSTOM"); // default to show everything until loaded
+  const [subscriptionBanner, setSubscriptionBanner] = useState<{ type: "warning" | "blocked"; daysLeft: number } | null>(null);
 
-  // Fetch tenant plan
+  // Fetch tenant plan + subscription state
   useEffect(() => {
     if (!token || !user) return;
     if (user.role === "ADMIN") {
@@ -124,6 +132,23 @@ export default function DashboardLayout({
     api.getPlanLimits(token)
       .then((res) => setTenantPlan(res.plan))
       .catch(() => { /* plan info non-critical */ });
+    api.getTenant(token)
+      .then((tenant) => {
+        if (!tenant.subscriptionEndsAt) return; // no expiry configured → no banner
+        const endsAt = new Date(tenant.subscriptionEndsAt);
+        const now = new Date();
+        const graceDays = tenant.subscriptionGraceDays ?? 5;
+        const msPerDay = 86_400_000;
+        const daysUntilExpiry = Math.ceil((endsAt.getTime() - now.getTime()) / msPerDay);
+        if (daysUntilExpiry > 0) return; // still active
+        const daysOverdue = Math.abs(daysUntilExpiry);
+        if (daysOverdue > graceDays) {
+          setSubscriptionBanner({ type: "blocked", daysLeft: 0 });
+        } else {
+          setSubscriptionBanner({ type: "warning", daysLeft: graceDays - daysOverdue });
+        }
+      })
+      .catch(() => { /* non-critical */ });
   }, [token, user]);
 
   // Filter nav items by role AND plan
@@ -419,9 +444,31 @@ export default function DashboardLayout({
 
             {/* Page content */}
             <main className="flex-1 overflow-auto">
-              <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto animate-fade-in">
-                {children}
-              </div>
+              {/* Subscription expired — grace period warning */}
+              {subscriptionBanner?.type === "warning" && (
+                <div className="bg-amber-500 text-white px-4 py-2.5 flex items-center gap-3 text-sm">
+                  <AlertTriangle size={16} className="shrink-0" />
+                  <span>
+                    Tu licencia venció. Tenés <strong>{subscriptionBanner.daysLeft} día{subscriptionBanner.daysLeft !== 1 ? "s" : ""}</strong> para regularizar antes de perder el acceso. Contactá a tu administrador.
+                  </span>
+                </div>
+              )}
+              {/* Subscription blocked */}
+              {subscriptionBanner?.type === "blocked" ? (
+                <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4 p-8 text-center">
+                  <div className="p-4 rounded-full bg-red-100 dark:bg-red-900/30">
+                    <ShieldOff className="w-10 h-10 text-red-600 dark:text-red-400" />
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Acceso suspendido</h2>
+                  <p className="text-gray-500 dark:text-gray-400 max-w-sm">
+                    Tu licencia de InmoFlow ha vencido y el período de gracia expiró. Contactá a tu administrador para regularizar tu suscripción.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto animate-fade-in">
+                  {children}
+                </div>
+              )}
             </main>
           </div>
         </div>

@@ -37,6 +37,8 @@ import { LeadRecoveryModule } from "./lead-recovery/lead-recovery.module";
 import { EncryptionModule } from "./common/encryption.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { ReelVideoModule } from "./reel-video/reel-video.module";
+import { TicketsModule } from "./tickets/tickets.module";
+import { BroadcastsModule } from "./broadcasts/broadcasts.module";
 
 @Module({
   imports: [
@@ -76,6 +78,8 @@ import { ReelVideoModule } from "./reel-video/reel-video.module";
     LeadRecoveryModule,
     UploadsModule,
     ReelVideoModule,
+    TicketsModule,
+    BroadcastsModule,
     HealthModule,
   ],
   providers: [
