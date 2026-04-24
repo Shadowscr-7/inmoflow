@@ -31,6 +31,23 @@ const ITEM_STATUS_CONFIG: Record<BroadcastItemStatus, { label: string; color: st
 const DEFAULT_PRICE_CHANGE_MSG =
   "Hola {nombre}! 👋 Te escribimos porque la propiedad que consultaste bajó de precio de ${precio_anterior} a ${precio_nuevo}. ¿Seguís interesado/a? Escribinos para más información.";
 
+// Strip trailing lowercase suffixes added via dash (e.g. "Javier-rebaja" → "Javier")
+// Matches patterns like -rebaja, -precio-especial but NOT " - Javier" (spaced separator)
+function normalizeFormName(name: string): string {
+  return name.replace(/(-[a-záéíóúüñ][a-záéíóúüña-z\w]*)+$/g, "").trim();
+}
+
+// Deduplicate sources by normalized name, keeping the newest per group
+function deduplicateSources(sources: LeadSource[]): (LeadSource & { displayName: string })[] {
+  const sorted = [...sources].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const map = new Map<string, LeadSource>();
+  for (const s of sorted) {
+    const key = normalizeFormName(s.name);
+    if (!map.has(key)) map.set(key, s);
+  }
+  return Array.from(map.values()).map((s) => ({ ...s, displayName: normalizeFormName(s.name) }));
+}
+
 // ─── Create Modal ─────────────────────────────────────
 
 interface CreateModalProps {
@@ -50,7 +67,7 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
   const [propertyTitle, setPropertyTitle] = useState("");
   // sourceValue: "" | "_type_META_LEAD_AD" (all Meta) | "<uuid>" (specific source)
   const [sourceValue, setSourceValue] = useState("");
-  const [sources, setSources] = useState<LeadSource[]>([]);
+  const [sources, setSources] = useState<(LeadSource & { displayName: string })[]>([]);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [autoApproveStageIds, setAutoApproveStageIds] = useState<string[]>([]);
   const [autoSend, setAutoSend] = useState(false);
@@ -61,7 +78,7 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
       api.getLeadSources(token),
       api.getStages(token),
     ]).then(([srcs, stgs]) => {
-      setSources(srcs.filter((s) => s.type === "META_LEAD_AD"));
+      setSources(deduplicateSources(srcs.filter((s) => s.type === "META_LEAD_AD")));
       setStages(stgs);
     }).catch(() => {}).finally(() => setLoadingSources(false));
   }, [token]);
@@ -137,7 +154,7 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
                   <optgroup label="Formularios específicos">
                     {sources.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name}{s.metaFormName ? ` (${s.metaFormName})` : ""}
+                        {s.displayName}
                       </option>
                     ))}
                   </optgroup>
