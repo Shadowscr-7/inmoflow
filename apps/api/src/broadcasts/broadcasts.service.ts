@@ -63,7 +63,8 @@ export class BroadcastsService {
         type: dto.type,
         title: dto.title,
         message: dto.message,
-        metadata: meta,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        metadata: meta as any,
         status: BroadcastStatus.READY,
         autoApproveStageIds: autoStages,
         autoSend: dto.autoSend ?? false,
@@ -77,7 +78,11 @@ export class BroadcastsService {
           })),
         },
       },
-      include: { ...BATCH_INCLUDE, items: { include: ITEM_INCLUDE } },
+      include: {
+        creator: { select: { id: true, name: true, email: true } },
+        _count: { select: { items: true } },
+        items: { include: ITEM_INCLUDE },
+      },
     });
 
     // Auto-send if requested

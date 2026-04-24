@@ -42,8 +42,8 @@ export class UpdateItemsDto {
   @IsString({ each: true })
   itemIds!: string[];
 
-  @IsIn([BroadcastItemStatus.APPROVED, BroadcastItemStatus.REJECTED])
-  status!: BroadcastItemStatus.APPROVED | BroadcastItemStatus.REJECTED;
+  @IsIn(["APPROVED", "REJECTED"])
+  status!: "APPROVED" | "REJECTED";
 }
 
 export class SendBatchDto {
