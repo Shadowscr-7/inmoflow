@@ -45,6 +45,8 @@ export default function MessagesPage() {
   // Users for agent filter
   const [users, setUsers] = useState<User[]>([]);
 
+  const isManager = user?.role === "ADMIN" || user?.role === "BUSINESS";
+
   // Debounce search
   useEffect(() => {
     const t = setTimeout(() => {
@@ -172,8 +174,6 @@ export default function MessagesPage() {
     return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" }) +
       " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
   };
-
-  const isManager = user?.role === "ADMIN" || user?.role === "BUSINESS";
 
   return (
     <div className="space-y-6">
