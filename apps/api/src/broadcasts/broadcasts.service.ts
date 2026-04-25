@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { MessagesService } from "../messages/messages.service";
-import { BroadcastStatus, BroadcastItemStatus } from "@inmoflow/db";
+import { BroadcastStatus, BroadcastItemStatus, LeadSourceType } from "@inmoflow/db";
 import { CreateBroadcastDto, UpdateItemsDto, SendBatchDto } from "./dto";
 
 function resolveMessage(template: string, lead: { name?: string | null }, meta: Record<string, unknown> = {}): string {
@@ -47,7 +47,7 @@ export class BroadcastsService {
       leadIds = leads.map((l) => l.id);
     } else if (leadIds.length === 0 && dto.sourceType) {
       const sources = await this.prisma.leadSource.findMany({
-        where: { tenantId, type: dto.sourceType },
+        where: { tenantId, type: dto.sourceType as LeadSourceType },
         select: { id: true },
       });
       if (sources.length > 0) {
