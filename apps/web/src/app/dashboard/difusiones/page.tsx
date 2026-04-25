@@ -67,6 +67,8 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
   const [propertyTitle, setPropertyTitle] = useState("");
   // sourceValue: "" | "_type_META_LEAD_AD" (all Meta) | "<uuid>" (specific source)
   const [sourceValue, setSourceValue] = useState("");
+  // secondary filter when sourceValue === "_type_META_LEAD_AD"
+  const [sourceFilterId, setSourceFilterId] = useState("");
   const [sources, setSources] = useState<(LeadSource & { displayName: string })[]>([]);
   const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
   const [autoApproveStageIds, setAutoApproveStageIds] = useState<string[]>([]);
@@ -93,6 +95,9 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
     if (!title.trim() || !message.trim() || !sourceValue) return;
     setSaving(true);
     const isAllMeta = sourceValue === "_type_META_LEAD_AD";
+    // If "all Meta" but a secondary form filter is chosen, treat it as a specific sourceId
+    const effectiveSourceId = isAllMeta ? (sourceFilterId || undefined) : sourceValue;
+    const effectiveSourceType = isAllMeta && !sourceFilterId ? "META_LEAD_AD" : undefined;
     try {
       const batch = await api.createBroadcast(token, {
         type,
@@ -105,7 +110,7 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
         },
         autoApproveStageIds,
         autoSend,
-        ...(isAllMeta ? { sourceType: "META_LEAD_AD" } : { sourceId: sourceValue }),
+        ...(effectiveSourceType ? { sourceType: effectiveSourceType } : { sourceId: effectiveSourceId }),
       });
       toast.success(`Difusión creada con ${batch._count.items} leads`);
       onCreated(batch);
@@ -143,28 +148,47 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
           </div>
 
           {/* Source */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Fuente de leads *</label>
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Fuente de leads *</label>
             {loadingSources ? <Spinner className="h-4 w-4" /> : (
-              <select value={sourceValue} onChange={(e) => setSourceValue(e.target.value)}
+              <select value={sourceValue} onChange={(e) => { setSourceValue(e.target.value); setSourceFilterId(""); }}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                 <option value="">— Seleccioná la fuente —</option>
-                <option value="_type_META_LEAD_AD">📋 Todos los leads de Meta (todos los formularios)</option>
+                <option value="_type_META_LEAD_AD">📋 Todos los leads de Meta</option>
                 {sources.length > 0 && (
-                  <optgroup label="Formularios específicos">
+                  <optgroup label="Formulario específico">
                     {sources.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.displayName}
-                      </option>
+                      <option key={s.id} value={s.id}>{s.displayName}</option>
                     ))}
                   </optgroup>
                 )}
               </select>
             )}
-            <p className="text-xs text-gray-400 mt-1">
-              {sourceValue === "_type_META_LEAD_AD"
+
+            {/* Secondary filter: only shown when "all Meta" is selected */}
+            {sourceValue === "_type_META_LEAD_AD" && sources.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Filtrar por formulario/propiedad <span className="text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <select value={sourceFilterId} onChange={(e) => setSourceFilterId(e.target.value)}
+                  className="w-full border border-dashed rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                  <option value="">— Todos los formularios —</option>
+                  {sources.map((s) => (
+                    <option key={s.id} value={s.id}>{s.displayName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-400">
+              {sourceValue === "_type_META_LEAD_AD" && !sourceFilterId
                 ? "Se notificará a todos los leads de Meta Lead Ads que tienen teléfono."
-                : "Se notificará a todos los leads de este formulario que tienen teléfono."}
+                : sourceValue === "_type_META_LEAD_AD" && sourceFilterId
+                ? "Se notificará solo a leads del formulario seleccionado que tienen teléfono."
+                : sourceValue
+                ? "Se notificará a todos los leads de este formulario que tienen teléfono."
+                : ""}
             </p>
           </div>
 
