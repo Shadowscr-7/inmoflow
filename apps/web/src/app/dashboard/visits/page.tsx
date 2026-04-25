@@ -35,8 +35,8 @@ const STATUS_ICONS: Record<string, typeof Calendar> = {
 };
 
 // Timeline: visible hours
-const HOUR_START = 7;
-const HOUR_END = 22;
+const HOUR_START = 1;
+const HOUR_END = 24;
 const PX_PER_HOUR = 64;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -299,7 +299,7 @@ function AgendaView({
   onClickVisit: (v: Visit) => void;
 }) {
   const sorted = [...visits].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const upcoming = sorted.filter((v) => new Date(v.date) >= new Date(today.setHours(0, 0, 0, 0)));
+  const upcoming = sorted;
 
   if (upcoming.length === 0) {
     return (

@@ -138,7 +138,7 @@ async function main() {
 
   await prisma.user.upsert({
     where: { id: "super-admin-seed-id" },
-    update: { passwordHash: pwHash },
+    update: { passwordHash: pwHash, isActive: true },
     create: {
       id: "super-admin-seed-id",
       tenantId: null,
@@ -152,28 +152,28 @@ async function main() {
   // ── Users Tenant A ────────────────────────────────────
   const adminA = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenantA.id, email: "admin@demoa.com" } },
-    update: { passwordHash: pwHash },
-    create: { tenantId: tenantA.id, email: "admin@demoa.com", passwordHash: pwHash, role: UserRole.BUSINESS, name: "Admin A" },
+    update: { passwordHash: pwHash, isActive: true },
+    create: { tenantId: tenantA.id, email: "admin@demoa.com", passwordHash: pwHash, isActive: true, role: UserRole.BUSINESS, name: "Admin A" },
   });
   const agentA1 = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenantA.id, email: "agent@demoa.com" } },
-    update: { passwordHash: pwHash },
-    create: { tenantId: tenantA.id, email: "agent@demoa.com", passwordHash: pwHash, role: UserRole.AGENT, name: "Lucía Torres" },
+    update: { passwordHash: pwHash, isActive: true },
+    create: { tenantId: tenantA.id, email: "agent@demoa.com", passwordHash: pwHash, isActive: true, role: UserRole.AGENT, name: "Lucía Torres" },
   });
   const agentA2 = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenantA.id, email: "agent2@demoa.com" } },
-    update: { passwordHash: pwHash },
-    create: { tenantId: tenantA.id, email: "agent2@demoa.com", passwordHash: pwHash, role: UserRole.AGENT, name: "Martín Ruiz" },
+    update: { passwordHash: pwHash, isActive: true },
+    create: { tenantId: tenantA.id, email: "agent2@demoa.com", passwordHash: pwHash, isActive: true, role: UserRole.AGENT, name: "Martín Ruiz" },
   });
   const agentA3 = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenantA.id, email: "agent3@demoa.com" } },
-    update: { passwordHash: pwHash },
-    create: { tenantId: tenantA.id, email: "agent3@demoa.com", passwordHash: pwHash, role: UserRole.AGENT, name: "Gabriela Sosa" },
+    update: { passwordHash: pwHash, isActive: true },
+    create: { tenantId: tenantA.id, email: "agent3@demoa.com", passwordHash: pwHash, isActive: true, role: UserRole.AGENT, name: "Gabriela Sosa" },
   });
   await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenantA.id, email: "viewer@demoa.com" } },
-    update: { passwordHash: pwHash },
-    create: { tenantId: tenantA.id, email: "viewer@demoa.com", passwordHash: pwHash, role: UserRole.VIEWER, name: "Carlos Méndez" },
+    update: { passwordHash: pwHash, isActive: true },
+    create: { tenantId: tenantA.id, email: "viewer@demoa.com", passwordHash: pwHash, isActive: true, role: UserRole.VIEWER, name: "Carlos Méndez" },
   });
   const agentsA = [agentA1, agentA2, agentA3];
 
@@ -516,6 +516,7 @@ async function main() {
       const propId = createdPropertiesA[i % createdPropertiesA.length];
       const dOff = rand(0, 45);
       const vDate = daysAgo(dOff);
+      vDate.setUTCHours(rand(10, 19), rand(0, 3) * 15, 0, 0); // 7-16h Uruguay (UTC-3)
       await prisma.visit.create({
         data: {
           tenantId: tenantA.id,
@@ -833,8 +834,8 @@ async function main() {
 
   await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenantB.id, email: "admin@demob.com" } },
-    update: { passwordHash: pwHash },
-    create: { tenantId: tenantB.id, email: "admin@demob.com", passwordHash: pwHash, role: UserRole.BUSINESS, name: "Admin B" },
+    update: { passwordHash: pwHash, isActive: true },
+    create: { tenantId: tenantB.id, email: "admin@demob.com", passwordHash: pwHash, isActive: true, role: UserRole.BUSINESS, name: "Admin B" },
   });
   const agentB = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenantB.id, email: "agent@demob.com" } },
