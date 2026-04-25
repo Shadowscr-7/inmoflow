@@ -12,14 +12,48 @@ import {
   ChevronDown,
   Check,
   Star,
-  Globe,
-  Headphones,
-  Infinity,
-  Crown,
+  Clock,
+  Rocket,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+
+/* ─── Countdown timer ──────────────────────────────── */
+// Offer expires June 25, 2026
+const OFFER_DEADLINE = new Date("2026-06-25T23:59:59");
+
+function CountdownTimer() {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
+  useEffect(() => {
+    function calc() {
+      const diff = OFFER_DEADLINE.getTime() - Date.now();
+      if (diff <= 0) return { days: 0, hours: 0, mins: 0, secs: 0 };
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      return { days, hours, mins, secs };
+    }
+    setTimeLeft(calc());
+    const t = setInterval(() => setTimeLeft(calc()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    <div className="flex items-center justify-center gap-2 mt-3">
+      <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+      <span className="text-xs text-emerald-300 font-medium">Oferta termina en:</span>
+      <div className="flex items-center gap-1 font-mono text-xs font-bold">
+        {[{ v: timeLeft.days, l: "d" }, { v: timeLeft.hours, l: "h" }, { v: timeLeft.mins, l: "m" }, { v: timeLeft.secs, l: "s" }].map(({ v, l }) => (
+          <span key={l} className="bg-emerald-900/60 text-emerald-200 px-1.5 py-0.5 rounded">
+            {pad(v)}{l}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* ─── Animated counter ─────────────────────────────── */
 function AnimatedNumber({ target, suffix = "" }: { target: number; suffix?: string }) {
@@ -274,51 +308,70 @@ export default function Home() {
         </section>
 
         {/* ─── Pricing section ─────────────────── */}
-        <section id="pricing" className="px-6 sm:px-12 pb-24 max-w-6xl mx-auto scroll-mt-8">
+        <section id="pricing" className="px-6 sm:px-12 pb-24 max-w-5xl mx-auto scroll-mt-8">
           {/* Section header */}
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-6">
               <Star className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium text-emerald-300">Pago único — sin suscripciones</span>
+              <span className="text-sm font-medium text-emerald-300">Simple y sin sorpresas</span>
             </div>
             <h2 className="text-3xl sm:text-5xl font-extrabold text-white mb-4">
               Elegí tu plan
             </h2>
             <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-              Licencia de por vida con actualizaciones incluidas. Un solo pago, tu CRM para siempre.
+              Todo incluido. Sin contratos. Cancelá cuando quieras.
             </p>
           </div>
 
-          {/* Pricing cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-5 items-stretch">
+          {/* Pricing cards — 2 plans, centered */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-3xl mx-auto">
 
-            {/* ── Starter ────────────────────── */}
-            <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-8
-                            hover:border-white/[0.15] transition-all duration-500 group flex flex-col">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-white mb-1">Starter</h3>
-                <p className="text-sm text-gray-500">Para inmobiliarias que arrancan</p>
-              </div>
-
-              <div className="mb-8">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-extrabold text-white">$997</span>
-                  <span className="text-gray-500 text-sm">USD</span>
+            {/* ── Plan con prueba gratis (featured) ── */}
+            <div className="relative rounded-2xl border-2 border-emerald-500/50 bg-emerald-950/20 backdrop-blur-sm p-8
+                            shadow-[0_0_60px_-12px_rgba(16,185,129,0.25)] flex flex-col">
+              {/* Badge */}
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                <div className="px-4 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-xs font-bold
+                                shadow-lg shadow-emerald-600/30 flex items-center gap-1.5">
+                  <Rocket className="w-3.5 h-3.5" />
+                  Oferta de lanzamiento
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Pago único — licencia de por vida</p>
               </div>
 
-              <ul className="space-y-3 mb-8">
+              <div className="mb-4 mt-2">
+                <h3 className="text-xl font-bold text-white mb-1">Prueba gratis 15 días</h3>
+                <p className="text-sm text-emerald-300/70">Empezá sin pagar nada. Luego $750/mes.</p>
+              </div>
+
+              {/* Price */}
+              <div className="mb-2">
+                <div className="flex items-end gap-2">
+                  <span className="text-6xl font-extrabold text-white">$0</span>
+                  <div className="pb-2">
+                    <p className="text-xs text-emerald-400 font-semibold">por 15 días</p>
+                    <p className="text-sm text-gray-400">luego $750 <span className="text-gray-500">USD/mes</span></p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Countdown */}
+              <div className="mb-6 p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/20">
+                <p className="text-xs text-center text-emerald-400/70 mb-1">Esta oferta está disponible por tiempo limitado</p>
+                <CountdownTimer />
+              </div>
+
+              <ul className="space-y-3 mb-8 flex-1">
                 {[
-                  "Hasta 3 usuarios",
-                  "2 canales (WhatsApp + Email)",
-                  "Pipeline visual Kanban",
-                  "Automatizaciones básicas (5 reglas)",
-                  "Plantillas de mensajes",
-                  "Dashboard con métricas",
-                  "Soporte por email",
+                  "Todos los canales (WhatsApp, Telegram, Email, Meta)",
+                  "Pipeline Kanban ilimitado",
+                  "Automatizaciones ilimitadas",
+                  "Agente IA (ChatGPT, Gemini, Claude)",
+                  "Dashboard avanzado con métricas",
+                  "Roles y permisos (Admin, Agente, Viewer)",
+                  "Soporte prioritario por WhatsApp",
+                  "Sin tarjeta requerida para la prueba",
                 ].map((feat) => (
-                  <li key={feat} className="flex items-start gap-3 text-sm text-gray-300">
+                  <li key={feat} className="flex items-start gap-3 text-sm text-gray-200">
                     <Check className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
                     {feat}
                   </li>
@@ -326,56 +379,49 @@ export default function Home() {
               </ul>
 
               <a
-                href="https://wa.me/5491100000000?text=Hola%2C%20me%20interesa%20el%20plan%20Starter%20de%20InmoFlow"
+                href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20empezar%20la%20prueba%20gratuita%20de%2015%20d%C3%ADas%20de%20InmoFlow"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full text-center px-6 py-3.5 rounded-xl text-sm font-bold mt-auto
-                           bg-white/[0.08] text-white border border-white/[0.1]
-                           hover:bg-white/[0.14] transition-all duration-300"
+                className="block w-full text-center px-6 py-4 rounded-xl text-sm font-bold mt-auto
+                           bg-gradient-to-r from-emerald-600 to-emerald-500 text-white
+                           hover:from-emerald-500 hover:to-emerald-400 shadow-lg shadow-emerald-600/25
+                           hover:shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5"
               >
-                Contactar ventas
+                Empezar prueba gratis
               </a>
             </div>
 
-            {/* ── Profesional (highlighted) ──── */}
-            <div className="relative rounded-2xl border-2 border-brand-500/50 bg-brand-950/40 backdrop-blur-sm p-8
-                            shadow-[0_0_60px_-12px_rgba(37,99,235,0.3)] group flex flex-col">
-              {/* Popular badge */}
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                <div className="px-4 py-1.5 rounded-full bg-gradient-to-r from-brand-600 to-brand-500 text-white text-xs font-bold
-                                shadow-lg shadow-brand-600/30 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Más elegido
-                </div>
+            {/* ── Plan estándar ──────────────── */}
+            <div className="relative rounded-2xl border border-white/[0.1] bg-white/[0.03] backdrop-blur-sm p-8
+                            hover:border-white/[0.18] transition-all duration-500 flex flex-col">
+              <div className="mb-4">
+                <h3 className="text-xl font-bold text-white mb-1">Plan Profesional</h3>
+                <p className="text-sm text-gray-400">Para inmobiliarias listas para crecer</p>
               </div>
 
-              <div className="mb-6 mt-2">
-                <h3 className="text-lg font-bold text-white mb-1">Profesional</h3>
-                <p className="text-sm text-brand-300/70">El plan completo para crecer</p>
-              </div>
-
+              {/* Price */}
               <div className="mb-8">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-extrabold text-white">$1.997</span>
-                  <span className="text-gray-400 text-sm">USD</span>
+                <div className="flex items-end gap-2">
+                  <span className="text-6xl font-extrabold text-white">$750</span>
+                  <div className="pb-2">
+                    <span className="text-gray-400">USD<span className="text-gray-500">/mes</span></span>
+                  </div>
                 </div>
-                <p className="text-xs text-brand-300/50 mt-2">Pago único — licencia de por vida</p>
+                <p className="text-xs text-gray-500 mt-2">Sin período de prueba · Acceso inmediato</p>
               </div>
 
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-3 mb-8 flex-1">
                 {[
-                  "Hasta 10 usuarios",
-                  "Todos los canales (WhatsApp, Telegram, Email, Meta Leads)",
-                  "Pipeline visual Kanban",
+                  "Todos los canales (WhatsApp, Telegram, Email, Meta)",
+                  "Pipeline Kanban ilimitado",
                   "Automatizaciones ilimitadas",
-                  "Agente IA (ChatGPT, Gemini, Claude, etc.)",
-                  "Facebook Lead Ads integrado",
-                  "Plantillas y respuestas automáticas",
+                  "Agente IA (ChatGPT, Gemini, Claude)",
                   "Dashboard avanzado con métricas",
-                  "Roles y permisos (BUSINESS, AGENT, VIEWER)",
+                  "Roles y permisos (Admin, Agente, Viewer)",
                   "Soporte prioritario por WhatsApp",
+                  "Acceso desde el primer día",
                 ].map((feat) => (
-                  <li key={feat} className="flex items-start gap-3 text-sm text-gray-200">
+                  <li key={feat} className="flex items-start gap-3 text-sm text-gray-300">
                     <Check className="w-4 h-4 text-brand-400 mt-0.5 shrink-0" />
                     {feat}
                   </li>
@@ -383,89 +429,26 @@ export default function Home() {
               </ul>
 
               <a
-                href="https://wa.me/5491100000000?text=Hola%2C%20me%20interesa%20el%20plan%20Profesional%20de%20InmoFlow"
+                href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20contratar%20el%20plan%20Profesional%20de%20InmoFlow"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full text-center px-6 py-3.5 rounded-xl text-sm font-bold mt-auto
-                           bg-gradient-to-r from-brand-600 to-brand-500 text-white
-                           hover:from-brand-500 hover:to-brand-400 shadow-lg shadow-brand-600/25
-                           hover:shadow-brand-500/40 transition-all duration-300"
+                className="block w-full text-center px-6 py-4 rounded-xl text-sm font-bold mt-auto
+                           bg-white/[0.08] text-white border border-white/[0.12]
+                           hover:bg-white/[0.14] hover:border-white/[0.2] transition-all duration-300"
               >
-                Contactar ventas
-              </a>
-            </div>
-
-            {/* ── Custom ─────────────────────── */}
-            <div className="relative rounded-2xl border border-amber-500/20 bg-gradient-to-b from-amber-950/20 to-transparent backdrop-blur-sm p-8
-                            hover:border-amber-500/30 transition-all duration-500 group overflow-hidden flex flex-col">
-              {/* Decorative glow */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-[60px]" />
-
-              <div className="relative mb-6">
-                <div className="flex items-center gap-2 mb-1">
-                  <Crown className="w-5 h-5 text-amber-400" />
-                  <h3 className="text-lg font-bold text-white">Custom</h3>
-                </div>
-                <p className="text-sm text-amber-400/60">Para inmobiliarias exigentes</p>
-              </div>
-
-              <div className="relative mb-8">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-extrabold bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent">$4.997</span>
-                  <span className="text-gray-500 text-sm">USD</span>
-                </div>
-                <p className="text-xs text-amber-400/40 mt-2">Pago único — todo incluido</p>
-              </div>
-
-              <ul className="relative space-y-3 mb-8">
-                {/* Everything in Pro */}
-                <li className="flex items-start gap-3 text-sm text-amber-200/80 font-medium">
-                  <Infinity className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                  Todo lo del plan Profesional
-                </li>
-                <li className="flex items-start gap-3 text-sm text-amber-200/80 font-medium">
-                  <Users className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                  Usuarios ilimitados
-                </li>
-
-                {/* Divider */}
-                <li className="border-t border-amber-500/10 pt-3 mt-3">
-                  <span className="text-[10px] font-bold text-amber-500/50 uppercase tracking-widest">Extras exclusivos</span>
-                </li>
-
-                {[
-                  { icon: Globe, text: "Sitio web inmobiliario a medida" },
-                  { icon: Bot, text: "Configuración y entrenamiento del agente IA" },
-                  { icon: Headphones, text: "Soporte VIP dedicado (WhatsApp + videollamada)" },
-                  { icon: Zap, text: "Integraciones y automatizaciones a medida" },
-                  { icon: BarChart3, text: "Instalación y deploy en tu servidor" },
-                ].map(({ icon: FeatIcon, text }) => (
-                  <li key={text} className="flex items-start gap-3 text-sm text-gray-300">
-                    <FeatIcon className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                    {text}
-                  </li>
-                ))}
-              </ul>
-
-              <a
-                href="https://wa.me/5491100000000?text=Hola%2C%20me%20interesa%20el%20plan%20Custom%20de%20InmoFlow"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full text-center px-6 py-3.5 rounded-xl text-sm font-bold mt-auto
-                           bg-gradient-to-r from-amber-600/80 to-amber-500/80 text-white
-                           hover:from-amber-500 hover:to-amber-400
-                           shadow-lg shadow-amber-600/15 hover:shadow-amber-500/25
-                           transition-all duration-300"
-              >
-                Hablar con un asesor
+                Contratar ahora
               </a>
             </div>
           </div>
 
+          {/* Fine print */}
+          <p className="text-center text-xs text-gray-600 mt-8">
+            Todos los planes incluyen actualizaciones. Podés cancelar en cualquier momento.
+          </p>
         </section>
 
         {/* ─── Footer ──────────────────────────── */}
-        <footer className="border-t border-white/[0.06] py-10 px-6">
+        <footer className="border-t border-white/[0.06] py-10 px-6 bg-[#0a1628]">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <Image src="/images/logo.png" alt="InmoFlow" width={28} height={28} className="opacity-60" />
