@@ -250,6 +250,9 @@ export interface LeadSource {
   enabled: boolean;
   createdAt: string;
   updatedAt?: string;
+  /** Enriched fields (returned when ?enriched=true) */
+  propertyLabel?: string | null;
+  agentLabel?: string | null;
 }
 
 // ─── Templates ────────────────────────────────────────

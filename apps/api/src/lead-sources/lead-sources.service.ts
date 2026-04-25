@@ -26,6 +26,38 @@ export class LeadSourcesService {
     });
   }
 
+  /**
+   * Like findAll but enriches META_LEAD_AD sources with property/agent labels
+   * extracted from the most recent lead's notes for each source.
+   */
+  async findAllEnriched(tenantId: string) {
+    if (!tenantId) return [];
+
+    const sources = await this.prisma.leadSource.findMany({
+      where: { tenantId, type: LeadSourceType.META_LEAD_AD },
+      include: { _count: { select: { leads: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return Promise.all(sources.map(async (source) => {
+      const lead = await this.prisma.lead.findFirst({
+        where: { tenantId, sourceId: source.id, notes: { not: null } },
+        orderBy: { createdAt: "desc" },
+        select: { notes: true },
+      });
+
+      const notes = lead?.notes ?? "";
+      const propertyMatch = notes.match(/^• Propiedad: (.+)$/m);
+      const agentMatch = notes.match(/^Agente formulario: (.+)$/m);
+
+      return {
+        ...source,
+        propertyLabel: propertyMatch?.[1]?.trim() ?? null,
+        agentLabel: agentMatch?.[1]?.trim() ?? null,
+      };
+    }));
+  }
+
   async findById(tenantId: string, id: string) {
     const source = await this.prisma.leadSource.findFirst({
       where: { id, tenantId },

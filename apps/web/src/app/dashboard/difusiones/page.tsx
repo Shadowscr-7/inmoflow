@@ -32,20 +32,29 @@ const DEFAULT_PRICE_CHANGE_MSG =
   "Hola {nombre}! 👋 Te escribimos porque la propiedad que consultaste bajó de precio de ${precio_anterior} a ${precio_nuevo}. ¿Seguís interesado/a? Escribinos para más información.";
 
 // Strip trailing lowercase suffixes added via dash (e.g. "Javier-rebaja" → "Javier")
-// Matches patterns like -rebaja, -precio-especial but NOT " - Javier" (spaced separator)
 function normalizeFormName(name: string): string {
   return name.replace(/(-[a-záéíóúüñ][a-záéíóúüña-z\w]*)+$/g, "").trim();
 }
 
-// Deduplicate sources by normalized name, keeping the newest per group
+// Build the human-readable label: prefer enriched property+agent data over raw form name
+function buildSourceLabel(s: LeadSource): string {
+  if (s.propertyLabel && s.agentLabel) return `${s.propertyLabel} — ${s.agentLabel}`;
+  if (s.propertyLabel) return s.propertyLabel;
+  return normalizeFormName(s.name);
+}
+
+// Deduplicate sources by their label, keeping the newest per group
 function deduplicateSources(sources: LeadSource[]): (LeadSource & { displayName: string })[] {
   const sorted = [...sources].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const map = new Map<string, LeadSource>();
   for (const s of sorted) {
-    const key = normalizeFormName(s.name);
+    // Dedup key: use agentLabel+property normalized, or fallback to normalized form name
+    const key = s.agentLabel
+      ? `${s.agentLabel}::${normalizeFormName(s.name)}`
+      : normalizeFormName(s.name);
     if (!map.has(key)) map.set(key, s);
   }
-  return Array.from(map.values()).map((s) => ({ ...s, displayName: normalizeFormName(s.name) }));
+  return Array.from(map.values()).map((s) => ({ ...s, displayName: buildSourceLabel(s) }));
 }
 
 // ─── Create Modal ─────────────────────────────────────
@@ -77,10 +86,10 @@ function CreateModal({ token, onClose, onCreated }: CreateModalProps) {
 
   useEffect(() => {
     Promise.all([
-      api.getLeadSources(token),
+      api.getLeadSources(token, { enriched: "true" }),
       api.getStages(token),
     ]).then(([srcs, stgs]) => {
-      setSources(deduplicateSources(srcs.filter((s) => s.type === "META_LEAD_AD")));
+      setSources(deduplicateSources(srcs));
       setStages(stgs);
     }).catch(() => {}).finally(() => setLoadingSources(false));
   }, [token]);
