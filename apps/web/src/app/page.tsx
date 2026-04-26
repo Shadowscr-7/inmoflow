@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   ArrowRight,
@@ -65,9 +65,7 @@ function WhatsAppButton() {
       href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20InmoFlow"
       target="_blank"
       rel="noopener noreferrer"
-      className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full
-                 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm shadow-2xl shadow-emerald-500/40
-                 transition-all duration-300 hover:-translate-y-0.5"
+      className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm shadow-2xl shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5"
     >
       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
@@ -88,8 +86,7 @@ export default function Home() {
       <WhatsAppButton />
 
       {/* â”€â”€â”€ Navbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <nav className="sticky top-0 z-40 flex items-center justify-between px-6 sm:px-12 py-4
-                      bg-[#060d1a]/90 backdrop-blur-md border-b border-white/[0.05]">
+      <nav className="sticky top-0 z-40 flex items-center justify-between px-6 sm:px-12 py-4 bg-[#060d1a]/90 backdrop-blur-md border-b border-white/[0.05]">
         <div className="flex items-center gap-3">
           <Image src="/images/logo.png" alt="InmoFlow" width={36} height={36} className="drop-shadow-lg" />
           <span className="text-xl font-bold tracking-tight">
@@ -102,8 +99,7 @@ export default function Home() {
           </Link>
           <a
             href="#pricing"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold
-                       bg-emerald-600 hover:bg-emerald-500 text-white transition-all duration-200"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all duration-200"
           >
             Prueba gratis
           </a>
@@ -161,10 +157,7 @@ export default function Home() {
         >
           <a
             href="#pricing"
-            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-bold
-                       bg-gradient-to-r from-emerald-600 to-emerald-500 text-white
-                       hover:from-emerald-500 hover:to-emerald-400 shadow-xl shadow-emerald-600/30
-                       transition-all duration-300 hover:-translate-y-0.5"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-500 hover:to-emerald-400 shadow-xl shadow-emerald-600/30 transition-all duration-300 hover:-translate-y-0.5"
           >
             <Rocket className="w-5 h-5" />
             Empezar prueba gratis 15 dÃ­as
@@ -173,9 +166,7 @@ export default function Home() {
             href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20agendar%20una%20demo%20de%20InmoFlow"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-semibold
-                       text-gray-300 bg-white/[0.05] border border-white/[0.1]
-                       hover:bg-white/[0.1] hover:text-white transition-all duration-300"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-semibold text-gray-300 bg-white/[0.05] border border-white/[0.1] hover:bg-white/[0.1] hover:text-white transition-all duration-300"
           >
             Agendar demo
             <ArrowRight className="w-4 h-4" />
@@ -474,11 +465,9 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             {/* Plan Prueba Gratis */}
-            <div className="relative rounded-2xl border-2 border-emerald-500/50 bg-emerald-950/15 p-8 flex flex-col
-                            shadow-[0_0_60px_-12px_rgba(16,185,129,0.2)]">
+            <div className="relative rounded-2xl border-2 border-emerald-500/50 bg-emerald-950/15 p-8 flex flex-col shadow-[0_0_60px_-12px_rgba(16,185,129,0.2)]">
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                <div className="px-4 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-xs font-bold
-                                shadow-lg shadow-emerald-600/30 flex items-center gap-1.5">
+                <div className="px-4 py-1.5 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-1.5">
                   <Rocket className="w-3.5 h-3.5" />
                   ðŸ”¥ Oferta de lanzamiento
                 </div>
@@ -520,18 +509,14 @@ export default function Home() {
                 href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20empezar%20la%20prueba%20gratuita%20de%2015%20d%C3%ADas%20de%20InmoFlow"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full text-center px-6 py-4 rounded-xl text-sm font-bold
-                           bg-gradient-to-r from-emerald-600 to-emerald-500 text-white
-                           hover:from-emerald-500 hover:to-emerald-400 shadow-lg shadow-emerald-600/25
-                           hover:shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5"
+                className="block w-full text-center px-6 py-4 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-500 hover:to-emerald-400 shadow-lg shadow-emerald-600/25 hover:shadow-emerald-500/40 transition-all duration-300 hover:-translate-y-0.5"
               >
                 Empezar prueba gratis â†’
               </a>
             </div>
 
             {/* Plan Profesional */}
-            <div className="relative rounded-2xl border border-white/[0.1] bg-white/[0.03] p-8 flex flex-col
-                            hover:border-white/[0.18] transition-all duration-300">
+            <div className="relative rounded-2xl border border-white/[0.1] bg-white/[0.03] p-8 flex flex-col hover:border-white/[0.18] transition-all duration-300">
               <div className="mb-4">
                 <h3 className="text-xl font-bold text-white mb-1">Plan Profesional</h3>
                 <p className="text-sm text-gray-400">Acceso inmediato. Sin perÃ­odo de prueba.</p>
@@ -565,9 +550,7 @@ export default function Home() {
                 href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20contratar%20el%20plan%20Profesional%20de%20InmoFlow"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full text-center px-6 py-4 rounded-xl text-sm font-bold
-                           bg-white/[0.08] text-white border border-white/[0.12]
-                           hover:bg-white/[0.14] hover:border-white/[0.2] transition-all duration-300"
+                className="block w-full text-center px-6 py-4 rounded-xl text-sm font-bold bg-white/[0.08] text-white border border-white/[0.12] hover:bg-white/[0.14] hover:border-white/[0.2] transition-all duration-300"
               >
                 Contratar ahora â†’
               </a>
@@ -597,10 +580,7 @@ export default function Home() {
                   href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20empezar%20la%20prueba%20gratuita%20de%20InmoFlow"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-bold
-                             bg-gradient-to-r from-emerald-600 to-emerald-500 text-white
-                             hover:from-emerald-500 hover:to-emerald-400 shadow-xl shadow-emerald-600/30
-                             transition-all duration-300 hover:-translate-y-0.5"
+                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-500 hover:to-emerald-400 shadow-xl shadow-emerald-600/30 transition-all duration-300 hover:-translate-y-0.5"
                 >
                   <Rocket className="w-5 h-5" />
                   Empezar prueba gratis
@@ -609,9 +589,7 @@ export default function Home() {
                   href="https://wa.me/5491100000000?text=Hola%2C%20quiero%20agendar%20una%20demo%20personalizada%20de%20InmoFlow"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-semibold
-                             text-gray-300 bg-white/[0.05] border border-white/[0.1]
-                             hover:bg-white/[0.1] hover:text-white transition-all duration-300"
+                  className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-base font-semibold text-gray-300 bg-white/[0.05] border border-white/[0.1] hover:bg-white/[0.1] hover:text-white transition-all duration-300"
                 >
                   Agendar demo personalizada
                   <ArrowRight className="w-4 h-4" />
