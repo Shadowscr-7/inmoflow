@@ -1,0 +1,13 @@
+{
+  "name": "telegram-claude",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env index.js",
+    "dev": "node --env-file=.env --watch index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.54.0"
+  }
+}

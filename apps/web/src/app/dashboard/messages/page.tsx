@@ -45,7 +45,7 @@ export default function MessagesPage() {
   // Users for agent filter
   const [users, setUsers] = useState<User[]>([]);
 
-  const isManager = user?.role === "ADMIN" || user?.role === "BUSINESS";
+  const isAdmin = user?.role === "ADMIN";
 
   // Debounce search
   useEffect(() => {
@@ -74,7 +74,7 @@ export default function MessagesPage() {
       if (directionFilter) params.direction = directionFilter;
       if (statusFilter) params.status = statusFilter;
       if (channelFilter) params.channel = channelFilter;
-      if (!isManager && user?.id) params.assigneeId = user.id;
+      if (!isAdmin && user?.id) params.assigneeId = user.id;
       else if (assigneeFilter) params.assigneeId = assigneeFilter;
       if (dateFrom) params.from = dateFrom;
       if (dateTo) params.to = dateTo;
@@ -86,7 +86,7 @@ export default function MessagesPage() {
       toast.error("Error al cargar mensajes");
     }
     setLoading(false);
-  }, [token, page, debouncedSearch, directionFilter, statusFilter, channelFilter, assigneeFilter, dateFrom, dateTo, isManager, user?.id]);
+  }, [token, page, debouncedSearch, directionFilter, statusFilter, channelFilter, assigneeFilter, dateFrom, dateTo, isAdmin, user?.id]);
 
   useEffect(() => {
     loadMessages();
@@ -250,8 +250,8 @@ export default function MessagesPage() {
             <option value="WEB">Web</option>
           </select>
 
-          {/* Assignee — managers only */}
-          {isManager && (
+          {/* Assignee filter — only ADMIN sees all agents */}
+          {isAdmin && (
             <select
               value={assigneeFilter}
               onChange={(e) => { setAssigneeFilter(e.target.value); setPage(0); }}

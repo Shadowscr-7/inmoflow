@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import { MessagesService } from "./messages.service";
 import { JwtAuthGuard, TenantGuard, RolesGuard, Roles } from "../auth/guards";
-import { TenantId } from "../auth/decorators";
+import { TenantId, CurrentUser } from "../auth/decorators";
 import { SendMessageDto } from "../channels/dto";
 
 @Controller("messages")
@@ -18,13 +18,15 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   /**
-   * GET /messages/history — full message history with filters (ADMIN / BUSINESS only)
+   * GET /messages/history — full message history with filters.
+   * ADMIN sees all; BUSINESS and AGENT are scoped to their own assigned leads.
    */
   @Get("history")
   @UseGuards(RolesGuard)
-  @Roles("ADMIN", "BUSINESS")
+  @Roles("ADMIN", "BUSINESS", "AGENT")
   history(
     @TenantId() tenantId: string,
+    @CurrentUser() currentUser: { id: string; role: string },
     @Query("direction") direction?: string,
     @Query("status") status?: string,
     @Query("channel") channel?: string,
@@ -35,11 +37,17 @@ export class MessagesController {
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
   ) {
+    // BUSINESS and AGENT always see only their own leads — ignore any incoming assigneeId
+    const resolvedAssigneeId =
+      currentUser.role === "ADMIN"
+        ? assigneeId || undefined
+        : currentUser.id;
+
     return this.messagesService.findHistory(tenantId, {
       direction: direction as "IN" | "OUT" | undefined,
       status: status || undefined,
       channel: channel || undefined,
-      assigneeId: assigneeId || undefined,
+      assigneeId: resolvedAssigneeId,
       from: from || undefined,
       to: to || undefined,
       search: search || undefined,

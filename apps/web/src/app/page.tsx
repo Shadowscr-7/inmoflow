@@ -474,14 +474,14 @@ export default function Home() {
               </div>
               <div className="mt-3 mb-4">
                 <h3 className="text-xl font-bold text-white mb-1">Prueba gratis 15 días</h3>
-                <p className="text-sm text-emerald-300/70">Empezá sin pagar nada. Luego $750/mes.</p>
+                <p className="text-sm text-emerald-300/70">Empezá sin pagar nada. Luego $198/mes.</p>
               </div>
               <div className="mb-4">
                 <div className="flex items-end gap-2">
                   <span className="text-6xl font-extrabold text-white">$0</span>
                   <div className="pb-2">
                     <p className="text-xs text-emerald-400 font-semibold">por 15 días</p>
-                    <p className="text-sm text-gray-400">luego <span className="text-white font-bold">$750</span> <span className="text-gray-500">USD/mes</span></p>
+                    <p className="text-sm text-gray-400">luego <span className="text-white font-bold">$198</span> <span className="text-gray-500">USD/mes</span></p>
                   </div>
                 </div>
               </div>
