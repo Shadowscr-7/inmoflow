@@ -355,11 +355,15 @@ export default function Home() {
               </div>
 
               <div className="mb-8">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-5xl font-extrabold text-white">$1.997</span>
-                  <span className="text-gray-400 text-sm">USD</span>
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="text-sm font-bold text-gray-500 line-through">$369</span>
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-extrabold text-emerald-300 ring-1 ring-emerald-400/25">50% OFF</span>
                 </div>
-                <p className="text-xs text-brand-300/50 mt-2">Pago único — licencia de por vida</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-5xl font-extrabold text-white">$198</span>
+                  <span className="text-gray-400 text-sm">USD/mes</span>
+                </div>
+                <p className="text-xs text-brand-300/50 mt-2">Sin contratos. Cancelás cuando querés.</p>
               </div>
 
               <ul className="space-y-3 mb-8">
