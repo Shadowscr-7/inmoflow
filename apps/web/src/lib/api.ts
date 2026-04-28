@@ -250,6 +250,9 @@ export interface LeadSource {
   enabled: boolean;
   createdAt: string;
   updatedAt?: string;
+  /** Enriched fields (returned when ?enriched=true) */
+  propertyLabel?: string | null;
+  agentLabel?: string | null;
 }
 
 // ─── Templates ────────────────────────────────────────
@@ -450,6 +453,82 @@ export interface CustomFieldValue {
   definitionId: string;
   value: string;
   definition: CustomFieldDefinition;
+}
+
+// ─── Tickets / Incidencias ────────────────────────────
+
+export type TicketStatus = "PENDING" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+export type TicketPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export interface TicketAttachment {
+  id: string;
+  ticketId: string;
+  url: string;
+  filename: string;
+  mimetype: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface Ticket {
+  id: string;
+  tenantId: string;
+  creatorId: string;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  adminNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  creator: { id: string; name: string | null; email: string; role: string };
+  attachments: TicketAttachment[];
+  tenant?: { id: string; name: string };
+}
+
+// ─── Broadcasts / Difusiones ─────────────────────────
+
+export type BroadcastStatus = "DRAFT" | "READY" | "SENDING" | "DONE" | "CANCELLED";
+export type BroadcastItemStatus = "PENDING" | "APPROVED" | "REJECTED" | "SENT" | "FAILED";
+
+export interface BroadcastItem {
+  id: string;
+  batchId: string;
+  leadId: string;
+  channelId: string | null;
+  status: BroadcastItemStatus;
+  message: string | null;
+  sentAt: string | null;
+  error: string | null;
+  createdAt: string;
+  lead: {
+    id: string;
+    name: string | null;
+    phone: string | null;
+    whatsappFrom: string | null;
+    primaryChannel: string | null;
+    status: string;
+    stageId: string | null;
+    stage: { name: string } | null;
+  };
+}
+
+export interface BroadcastBatch {
+  id: string;
+  tenantId: string;
+  type: string;
+  title: string;
+  message: string;
+  metadata: Record<string, unknown> | null;
+  status: BroadcastStatus;
+  autoApproveStageIds: string[];
+  autoSend: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  creator: { id: string; name: string | null; email: string };
+  _count: { items: number };
+  items?: BroadcastItem[];
 }
 
 // ─── Properties ───────────────────────────────────────
@@ -875,13 +954,16 @@ export const api = {
 
   // Tenant
   getTenant(token: string) {
-    return apiFetch<{ id: string; name: string; plan: string }>("/tenants/me", { token });
+    return apiFetch<{ id: string; name: string; plan: string; telegramNotifEnabled: boolean; telegramNotifBotToken: string | null; telegramNotifChatId: string | null; subscriptionStatus: string; subscriptionEndsAt: string | null; subscriptionGraceDays: number }>("/tenants/me", { token });
   },
   getTenants(token: string) {
-    return apiFetch<{ id: string; name: string; plan: string; createdAt: string; _count: { users: number } }[]>("/tenants", { token });
+    return apiFetch<{ id: string; name: string; plan: string; createdAt: string; subscriptionStatus: string; subscriptionStartedAt: string | null; subscriptionEndsAt: string | null; subscriptionGraceDays: number; paymentProvider: string | null; paymentReference: string | null; paymentNotes: string | null; _count: { users: number } }[]>("/tenants", { token });
   },
   createTenant(token: string, data: { name: string; plan?: string }) {
     return apiFetch("/tenants", { token, method: "POST", body: JSON.stringify(data) });
+  },
+  updateTenantSettings(token: string, data: { telegramNotifEnabled?: boolean; telegramNotifBotToken?: string; telegramNotifChatId?: string }) {
+    return apiFetch<{ id: string; telegramNotifEnabled: boolean; telegramNotifBotToken: string | null; telegramNotifChatId: string | null }>("/tenants/me/settings", { token, method: "PATCH", body: JSON.stringify(data) });
   },
 
   // ─── Channels ─────────────────────────────────────
@@ -1097,6 +1179,9 @@ export const api = {
   getAiConfig(token: string) {
     return apiFetch<{
       configured: boolean;
+      hasPlatformDefault: boolean;
+      platformProvider: string | null;
+      platformModel: string | null;
       config?: {
         id: string;
         provider: string;
@@ -1164,7 +1249,7 @@ export const api = {
       metaLeads: boolean;
     }>("/plan", { token });
   },
-  updateTenant(token: string, tenantId: string, data: { name?: string; plan?: string }) {
+  updateTenant(token: string, tenantId: string, data: { name?: string; plan?: string; subscriptionStatus?: string; subscriptionStartedAt?: string | null; subscriptionEndsAt?: string | null; subscriptionGraceDays?: number; paymentProvider?: string | null; paymentReference?: string | null; paymentNotes?: string | null }) {
     return apiFetch(`/tenants/${tenantId}`, { token, method: "PATCH", body: JSON.stringify(data) });
   },
 
@@ -1189,8 +1274,9 @@ export const api = {
   },
 
   // ─── Custom Fields ────────────────────────────────
-  getCustomFields(token: string) {
-    return apiFetch<CustomFieldDefinition[]>("/custom-fields", { token });
+  async getCustomFields(token: string): Promise<CustomFieldDefinition[]> {
+    const res = await apiFetch<{ data: CustomFieldDefinition[] } | CustomFieldDefinition[]>("/custom-fields", { token });
+    return Array.isArray(res) ? res : res.data ?? [];
   },
   createCustomField(token: string, data: Record<string, unknown>) {
     return apiFetch<CustomFieldDefinition>("/custom-fields", { token, method: "POST", body: JSON.stringify(data) });
@@ -1206,6 +1292,58 @@ export const api = {
   },
   setLeadCustomValues(token: string, leadId: string, values: { definitionId: string; value: string }[]) {
     return apiFetch<CustomFieldValue[]>(`/custom-fields/leads/${leadId}`, { token, method: "POST", body: JSON.stringify({ values }) });
+  },
+
+  // ─── Tickets / Incidencias ─────────────────────────
+  getTickets(token: string, params?: { status?: TicketStatus; tenantId?: string; creatorId?: string }) {
+    const qs = params ? "?" + new URLSearchParams(params as Record<string, string>).toString() : "";
+    return apiFetch<Ticket[]>(`/tickets${qs}`, { token });
+  },
+  getTicket(token: string, id: string) {
+    return apiFetch<Ticket>(`/tickets/${id}`, { token });
+  },
+  createTicket(token: string, data: { title: string; description: string; priority?: TicketPriority }) {
+    return apiFetch<Ticket>("/tickets", { token, method: "POST", body: JSON.stringify(data) });
+  },
+  updateTicket(token: string, id: string, data: Record<string, unknown>) {
+    return apiFetch<Ticket>(`/tickets/${id}`, { token, method: "PATCH", body: JSON.stringify(data) });
+  },
+  deleteTicket(token: string, id: string) {
+    return apiFetch<void>(`/tickets/${id}`, { token, method: "DELETE" });
+  },
+  addTicketAttachments(token: string, ticketId: string, attachments: { url: string; filename: string; mimetype: string; size: number }[]) {
+    return apiFetch<Ticket>(`/tickets/${ticketId}/attachments`, { token, method: "POST", body: JSON.stringify({ attachments }) });
+  },
+  removeTicketAttachment(token: string, ticketId: string, attachmentId: string) {
+    return apiFetch<void>(`/tickets/${ticketId}/attachments/${attachmentId}`, { token, method: "DELETE" });
+  },
+
+  // ─── Broadcasts / Difusiones ──────────────────────
+  getBroadcasts(token: string) {
+    return apiFetch<BroadcastBatch[]>("/broadcasts", { token });
+  },
+  getBroadcast(token: string, id: string) {
+    return apiFetch<BroadcastBatch>(`/broadcasts/${id}`, { token });
+  },
+  createBroadcast(token: string, data: {
+    type: string; title: string; message: string;
+    metadata?: Record<string, unknown>;
+    autoApproveStageIds?: string[];
+    autoSend?: boolean;
+    sourceId?: string;
+    sourceType?: string;
+    leadIds?: string[];
+  }) {
+    return apiFetch<BroadcastBatch>("/broadcasts", { token, method: "POST", body: JSON.stringify(data) });
+  },
+  updateBroadcastItems(token: string, batchId: string, itemIds: string[], status: "APPROVED" | "REJECTED") {
+    return apiFetch<BroadcastBatch>(`/broadcasts/${batchId}/items`, { token, method: "PATCH", body: JSON.stringify({ itemIds, status }) });
+  },
+  sendBroadcast(token: string, batchId: string, itemIds?: string[]) {
+    return apiFetch<{ queued: number }>(`/broadcasts/${batchId}/send`, { token, method: "POST", body: JSON.stringify({ itemIds }) });
+  },
+  cancelBroadcast(token: string, batchId: string) {
+    return apiFetch<void>(`/broadcasts/${batchId}`, { token, method: "DELETE" });
   },
 
   // ─── Properties ───────────────────────────────────

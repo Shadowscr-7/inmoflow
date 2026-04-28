@@ -32,10 +32,20 @@ export class AiController {
   @Get("config")
   async getConfig(@TenantId() tenantId: string) {
     const config = await this.aiConfig.findByTenant(tenantId);
-    if (!config) return { configured: false };
+    const platform = this.aiConfig.getPlatformDefault();
+
+    if (!config) {
+      return {
+        configured: false,
+        hasPlatformDefault: !!platform,
+        platformProvider: platform?.provider ?? null,
+        platformModel: platform?.model ?? null,
+      };
+    }
 
     return {
       configured: true,
+      hasPlatformDefault: false,
       config: {
         id: config.id,
         provider: config.provider,
@@ -112,7 +122,8 @@ export class AiController {
     @Body() dto: TestAiDto,
   ) {
     await this.planService.checkAiAccess(tenantId);
-    const config = await this.aiConfig.getByTenant(tenantId);
+    const config = await this.aiConfig.getEffectiveConfig(tenantId);
+    if (!config) throw new Error("No AI configured and no platform fallback available");
 
     const result = await this.ai.test(
       {
@@ -137,7 +148,8 @@ export class AiController {
     @Body() dto: AiChatDto,
   ) {
     await this.planService.checkAiAccess(tenantId);
-    const config = await this.aiConfig.getByTenant(tenantId);
+    const config = await this.aiConfig.getEffectiveConfig(tenantId);
+    if (!config) return { error: "AI agent not configured" };
     if (!config.enabled) {
       return { error: "AI agent is disabled" };
     }
@@ -187,7 +199,8 @@ export class AiController {
     @Param("leadId") leadId: string,
   ) {
     await this.planService.checkAiAccess(tenantId);
-    const config = await this.aiConfig.getByTenant(tenantId);
+    const config = await this.aiConfig.getEffectiveConfig(tenantId);
+    if (!config) return { error: "AI agent not configured" };
     if (!config.enabled) return { error: "AI agent is disabled" };
 
     // Fetch lead + related data in parallel

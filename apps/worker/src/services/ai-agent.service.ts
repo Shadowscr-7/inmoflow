@@ -71,14 +71,14 @@ export class AiAgentService {
    * Check if tenant has a configured and enabled AI agent.
    */
   async isAvailable(tenantId: string, userId?: string | null): Promise<boolean> {
-    // Check for per-agent config first, then tenant default
     let config = userId
       ? await this.prisma.aiConfig.findFirst({ where: { tenantId, userId, enabled: true } })
       : null;
     if (!config) {
       config = await this.prisma.aiConfig.findFirst({ where: { tenantId, userId: null, enabled: true } });
     }
-    return !!(config && config.apiKey);
+    if (config?.apiKey) return true;
+    return !!process.env.PLATFORM_OPENAI_API_KEY;
   }
 
   /**
@@ -102,15 +102,38 @@ export class AiAgentService {
     });
     if (!lead) return null;
 
-    // Load AI config: per-agent first, then tenant default
-    let config = lead.assigneeId
+    // Load AI config: per-agent first, then tenant default, then platform fallback
+    let rawConfig = lead.assigneeId
       ? await this.prisma.aiConfig.findFirst({ where: { tenantId, userId: lead.assigneeId, enabled: true } })
       : null;
-    if (!config) {
-      config = await this.prisma.aiConfig.findFirst({ where: { tenantId, userId: null, enabled: true } });
+    if (!rawConfig) {
+      rawConfig = await this.prisma.aiConfig.findFirst({ where: { tenantId, userId: null, enabled: true } });
     }
-    if (!config || !config.apiKey) {
-      return null;
+
+    // Build effective config (decrypt tenant key or use platform fallback)
+    let effectiveProvider: AiProvider;
+    let effectiveApiKey: string;
+    let effectiveModel: string;
+    let effectiveTemperature: number;
+    let effectiveMaxTokens: number;
+    let effectiveSystemPrompt: string | null;
+
+    if (rawConfig?.apiKey) {
+      effectiveProvider = rawConfig.provider;
+      effectiveApiKey = this.decryptValue(rawConfig.apiKey);
+      effectiveModel = rawConfig.model;
+      effectiveTemperature = rawConfig.temperature;
+      effectiveMaxTokens = rawConfig.maxTokens;
+      effectiveSystemPrompt = rawConfig.systemPrompt;
+    } else {
+      const platformKey = process.env.PLATFORM_OPENAI_API_KEY;
+      if (!platformKey) return null;
+      effectiveProvider = "OPENAI" as AiProvider;
+      effectiveApiKey = platformKey;
+      effectiveModel = process.env.PLATFORM_AI_MODEL || "gpt-4o-mini";
+      effectiveTemperature = 0.7;
+      effectiveMaxTokens = 1024;
+      effectiveSystemPrompt = null;
     }
 
     // Get recent conversation history (last 10 messages)
@@ -125,8 +148,8 @@ export class AiAgentService {
     const systemParts: string[] = [];
 
     // Global system prompt from config
-    if (config.systemPrompt) {
-      systemParts.push(config.systemPrompt);
+    if (effectiveSystemPrompt) {
+      systemParts.push(effectiveSystemPrompt);
     } else {
       systemParts.push(
         "Sos un asistente virtual de una inmobiliaria. " +
@@ -264,11 +287,11 @@ export class AiAgentService {
 
     try {
       const result = await this.chat(messages, {
-        provider: config.provider,
-        apiKey: this.decryptValue(config.apiKey),
-        model: config.model,
-        temperature: config.temperature,
-        maxTokens: config.maxTokens,
+        provider: effectiveProvider,
+        apiKey: effectiveApiKey,
+        model: effectiveModel,
+        temperature: effectiveTemperature,
+        maxTokens: effectiveMaxTokens,
       });
 
       this.logger.log(
@@ -278,8 +301,8 @@ export class AiAgentService {
       return {
         content: result.content,
         aiGenerated: true,
-        provider: config.provider,
-        model: config.model,
+        provider: effectiveProvider,
+        model: effectiveModel,
       };
     } catch (err) {
       this.logger.error(`AI generation failed for lead ${leadId}: ${(err as Error).message}`);

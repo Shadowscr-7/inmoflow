@@ -263,14 +263,12 @@ function CommissionsList({
           <option value="CANCELLED">Cancelada</option>
         </select>
         <span className="text-sm text-gray-500 ml-auto">{total} comisiones</span>
-        {isManager && (
-          <button
-            onClick={() => { setEditId(null); setShowCreate(true); }}
-            className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700 transition"
-          >
-            <Plus size={16} /> Nueva comisión
-          </button>
-        )}
+        <button
+          onClick={() => { setEditId(null); setShowCreate(true); }}
+          className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700 transition"
+        >
+          <Plus size={16} /> Nueva comisión
+        </button>
       </div>
 
       {/* Table */}
@@ -392,6 +390,8 @@ function CommissionsList({
           users={users}
           rules={rules}
           agentName={agentName}
+          isManager={isManager}
+          currentUserId={currentUserId}
           onClose={() => setShowCreate(false)}
           onSaved={() => { setShowCreate(false); loadCommissions(); }}
           addToast={addToast}
@@ -551,6 +551,8 @@ function CommissionModal({
   users,
   rules,
   agentName,
+  isManager,
+  currentUserId,
   onClose,
   onSaved,
   addToast,
@@ -560,11 +562,13 @@ function CommissionModal({
   users: User[];
   rules: CommissionRule[];
   agentName: (id: string) => string;
+  isManager: boolean;
+  currentUserId?: string;
   onClose: () => void;
   onSaved: () => void;
   addToast: (t: { type: string; message: string }) => void;
 }) {
-  const [agentId, setAgentId] = useState("");
+  const [agentId, setAgentId] = useState(!isManager && currentUserId ? currentUserId : "");
   const [operationType, setOperationType] = useState<string>("SALE");
   const [dealAmount, setDealAmount] = useState("");
   const [commissionPct, setCommissionPct] = useState("");
@@ -641,20 +645,29 @@ function CommissionModal({
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md p-6 space-y-4">
         <h3 className="text-lg font-bold">{editId ? "Editar comisión" : "Nueva comisión"}</h3>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Agente</label>
-          <select
-            value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
-            disabled={!!editId}
-            className="w-full border rounded px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700"
-          >
-            <option value="">Seleccionar agente...</option>
-            {users.filter((u) => u.role === "AGENT" || u.role === "BUSINESS").map((u) => (
-              <option key={u.id} value={u.id}>{u.name || u.email}</option>
-            ))}
-          </select>
-        </div>
+        {isManager ? (
+          <div>
+            <label className="block text-sm font-medium mb-1">Agente</label>
+            <select
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+              disabled={!!editId}
+              className="w-full border rounded px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+            >
+              <option value="">Seleccionar agente...</option>
+              {users.filter((u) => u.role === "AGENT" || u.role === "BUSINESS").map((u) => (
+                <option key={u.id} value={u.id}>{u.name || u.email}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium mb-1">Agente</label>
+            <div className="w-full border rounded px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 dark:border-gray-700 text-gray-600 dark:text-gray-400">
+              {agentName(agentId)}
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium mb-1">Tipo de operación</label>

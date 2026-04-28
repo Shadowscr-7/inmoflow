@@ -24,7 +24,11 @@ export class LeadSourcesController {
   findAll(
     @TenantId() tenantId: string,
     @Query("type") type?: LeadSourceType,
+    @Query("enriched") enriched?: string,
   ) {
+    if (enriched === "true") {
+      return this.leadSourcesService.findAllEnriched(tenantId);
+    }
     return this.leadSourcesService.findAll(tenantId, type);
   }
 

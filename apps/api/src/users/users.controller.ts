@@ -72,6 +72,10 @@ export class UsersController {
     if (!targetTenantId) {
       throw new ForbiddenException("Tenant ID required to create a user");
     }
+    // BUSINESS can only create AGENT or VIEWER accounts
+    if (user.role === "BUSINESS" && dto.role && !["AGENT", "VIEWER"].includes(dto.role)) {
+      throw new ForbiddenException("BUSINESS users can only create AGENT or VIEWER accounts");
+    }
     return this.usersService.create(targetTenantId, dto);
   }
 
@@ -86,6 +90,10 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
     @CurrentUser() user: { userId: string; tenantId: string | null; role: string },
   ) {
+    // BUSINESS can only assign AGENT or VIEWER roles
+    if (user.role === "BUSINESS" && dto.role && !["AGENT", "VIEWER"].includes(dto.role)) {
+      throw new ForbiddenException("BUSINESS users can only assign AGENT or VIEWER roles");
+    }
     return this.usersService.update(id, dto, user.tenantId, user.role);
   }
 

@@ -67,11 +67,25 @@ export class LeadNotificationService {
   }
 
   private async sendTelegramNotification(lead: LeadWithRelations, agentName: string | null): Promise<void> {
-    const botToken = process.env.NOTIFY_TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.NOTIFY_TELEGRAM_CHAT_ID;
+    // Use per-tenant config first; global env vars are only a last-resort fallback for legacy/admin use
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: lead.tenantId },
+      select: { telegramNotifEnabled: true, telegramNotifBotToken: true, telegramNotifChatId: true },
+    });
+
+    let botToken: string | null | undefined;
+    let chatId: string | null | undefined;
+
+    if (tenant?.telegramNotifEnabled && tenant.telegramNotifBotToken && tenant.telegramNotifChatId) {
+      botToken = tenant.telegramNotifBotToken;
+      chatId = tenant.telegramNotifChatId;
+    } else {
+      // No per-tenant config or disabled — skip entirely (don't fall back to global)
+      return;
+    }
 
     if (!botToken || !chatId) {
-      return; // Telegram notifications not configured
+      return;
     }
 
     const text = this.buildTelegramMessage(lead, agentName);
@@ -414,6 +428,7 @@ export class LeadNotificationService {
 
 type LeadWithRelations = {
   id: string;
+  tenantId: string;
   name: string | null;
   phone: string | null;
   email: string | null;
