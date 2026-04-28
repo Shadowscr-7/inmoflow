@@ -481,7 +481,13 @@ export default function Home() {
                   <span className="text-6xl font-extrabold text-white">$0</span>
                   <div className="pb-2">
                     <p className="text-xs text-emerald-400 font-semibold">por 15 días</p>
-                    <p className="text-sm text-gray-400">luego <span className="text-white font-bold">$198</span> <span className="text-gray-500">USD/mes</span></p>
+                    <p className="text-sm text-gray-400 flex flex-wrap items-center gap-1.5">
+                      luego
+                      <span className="text-gray-500 line-through">$369</span>
+                      <span className="text-white font-bold">$198</span>
+                      <span className="text-gray-500">USD/mes</span>
+                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-extrabold text-emerald-300 ring-1 ring-emerald-400/25">50% OFF</span>
+                    </p>
                   </div>
                 </div>
               </div>
@@ -523,7 +529,13 @@ export default function Home() {
               </div>
               <div className="mb-8">
                 <div className="flex items-end gap-2">
-                  <span className="text-6xl font-extrabold text-white">$750</span>
+                  <div>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="text-sm font-bold text-gray-500 line-through">$369</span>
+                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-extrabold text-emerald-300 ring-1 ring-emerald-400/25">50% OFF</span>
+                    </div>
+                    <span className="text-6xl font-extrabold text-white">$198</span>
+                  </div>
                   <div className="pb-2">
                     <span className="text-gray-400">USD<span className="text-gray-500">/mes</span></span>
                   </div>
